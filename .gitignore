@@ -1,0 +1,46 @@
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
+*.swp
+*~
+.AppleDouble
+.LSOverride
+._*
+
+# Build outputs
+build/
+*.app/
+*.dmg
+dmg-temp/
+
+# IDE
+.idea/
+*.code-workspace
+.vscode/
+
+# Secrets (never commit)
+*.pem
+*.p12
+*.key
+.env
+.env.*
+
+# Crash logs
+*.crash
+
+# Test outputs
+*.xcresult
