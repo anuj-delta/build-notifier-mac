@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @State private var showingVercelOnboarding = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -131,57 +132,152 @@ struct SettingsView: View {
                         }
                     }
                     
-                    // Projects Section
-                    SettingsSection(title: "Watched Projects") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(appState.preferences.watchedProjects) { project in
-                                WatchedProjectRow(
-                                    project: project,
-                                    onUpdate: { updated in
-                                        appState.updateWatchedProject(updated)
-                                    },
-                                    onRemove: {
-                                        appState.removeFromWatchlist(project)
-                                    }
-                                )
-                            }
-                            
-                            Button("Add Projects...") {
-                                appState.showingSettings = false
-                                dismiss()
-                                appState.currentScreen = .projectSelection
-                                appState.stopPolling()
-                                Task {
-                                    await appState.loadProjects()
+                    // CircleCI Projects Section
+                    if appState.hasCircleCIToken {
+                        SettingsSection(title: "CircleCI Projects") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(appState.preferences.watchedProjects) { project in
+                                    WatchedProjectRow(
+                                        project: project,
+                                        onUpdate: { updated in
+                                            appState.updateWatchedProject(updated)
+                                        },
+                                        onRemove: {
+                                            appState.removeFromWatchlist(project)
+                                        }
+                                    )
                                 }
+                                
+                                Button("Add CircleCI Projects...") {
+                                    appState.showingSettings = false
+                                    dismiss()
+                                    appState.currentScreen = .projectSelection
+                                    appState.stopPolling()
+                                    Task {
+                                        await appState.loadProjects()
+                                    }
+                                }
+                                .buttonStyle(.link)
                             }
-                            .buttonStyle(.link)
                         }
                     }
                     
-                    // Account Section
-                    SettingsSection(title: "Account") {
+                    // Vercel Section
+                    SettingsSection(title: "Vercel") {
                         VStack(alignment: .leading, spacing: 12) {
-                            if let user = appState.currentUser {
-                                HStack {
-                                    Text("Logged in as")
-                                        .foregroundStyle(.secondary)
-                                    Text(user.login ?? user.name ?? "Unknown")
-                                        .fontWeight(.medium)
+                            if appState.hasVercelToken {
+                                if let user = appState.vercelUser {
+                                    HStack {
+                                        Text("Connected as")
+                                            .foregroundStyle(.secondary)
+                                        Text(user.username ?? user.email ?? "Unknown")
+                                            .fontWeight(.medium)
+                                    }
                                 }
-                            }
-                            
-                            HStack(spacing: 12) {
-                                Button("Change API Token") {
-                                    appState.changeToken()
-                                }
-                                .buttonStyle(.bordered)
                                 
-                                Button("Sign Out") {
-                                    appState.signOut()
+                                if !appState.preferences.watchedVercelProjects.isEmpty {
+                                    Divider()
+                                        .padding(.vertical, 4)
+                                    
+                                    ForEach(appState.preferences.watchedVercelProjects) { project in
+                                        WatchedVercelProjectRow(
+                                            project: project,
+                                            onUpdate: { updated in
+                                                appState.updateWatchedVercelProject(updated)
+                                            },
+                                            onRemove: {
+                                                appState.removeVercelFromWatchlist(project)
+                                            }
+                                        )
+                                    }
                                 }
-                                .buttonStyle(.bordered)
-                                .foregroundStyle(.red)
+                                
+                                Divider()
+                                    .padding(.vertical, 4)
+                                
+                                Toggle("Deployment notifications", isOn: Binding(
+                                    get: { appState.preferences.vercelNotificationsEnabled },
+                                    set: {
+                                        appState.preferences.vercelNotificationsEnabled = $0
+                                        appState.savePreferences()
+                                    }
+                                ))
+                                
+                                if appState.preferences.vercelNotificationsEnabled {
+                                    Toggle("Deployment ready", isOn: Binding(
+                                        get: { appState.preferences.notifyOnDeploymentReady },
+                                        set: {
+                                            appState.preferences.notifyOnDeploymentReady = $0
+                                            appState.savePreferences()
+                                        }
+                                    ))
+                                    .padding(.leading, 16)
+                                    
+                                    Toggle("Deployment error", isOn: Binding(
+                                        get: { appState.preferences.notifyOnDeploymentError },
+                                        set: {
+                                            appState.preferences.notifyOnDeploymentError = $0
+                                            appState.savePreferences()
+                                        }
+                                    ))
+                                    .padding(.leading, 16)
+                                }
+                                
+                                Divider()
+                                    .padding(.vertical, 4)
+                                
+                                HStack(spacing: 12) {
+                                    Button("Add Projects...") {
+                                        showingVercelOnboarding = true
+                                    }
+                                    .buttonStyle(.link)
+                                    
+                                    Spacer()
+                                    
+                                    Button("Disconnect") {
+                                        appState.disconnectVercel()
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .foregroundStyle(.red)
+                                }
+                            } else {
+                                Text("Track your Vercel deployments alongside CircleCI builds.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                
+                                Button("Connect Vercel") {
+                                    showingVercelOnboarding = true
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        }
+                    }
+                    
+                    // CircleCI Account Section
+                    if appState.hasCircleCIToken {
+                        SettingsSection(title: "CircleCI Account") {
+                            VStack(alignment: .leading, spacing: 12) {
+                                if let user = appState.currentUser {
+                                    HStack {
+                                        Text("Logged in as")
+                                            .foregroundStyle(.secondary)
+                                        Text(user.login ?? user.name ?? "Unknown")
+                                            .fontWeight(.medium)
+                                    }
+                                }
+                                
+                                HStack(spacing: 12) {
+                                    Button("Change API Token") {
+                                        appState.changeToken()
+                                    }
+                                    .buttonStyle(.bordered)
+                                    
+                                    Button("Sign Out") {
+                                        appState.signOut()
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .foregroundStyle(.red)
+                                }
                             }
                         }
                     }
@@ -199,7 +295,7 @@ struct SettingsView: View {
             HStack {
                 Spacer()
                 
-                Button("Quit CircleCI Notifier") {
+                Button("Quit Build Notifier") {
                     NSApplication.shared.terminate(nil)
                 }
                 .buttonStyle(.bordered)
@@ -207,13 +303,17 @@ struct SettingsView: View {
             }
             .padding()
         }
-        .frame(width: 400, height: 550)
+        .frame(width: 400, height: 650)
         .background(Color(nsColor: .windowBackgroundColor))
         .contentShape(Rectangle())
         .onTapGesture { } // Consume clicks to prevent popover dismissal
         .onAppear {
             // Ensure the window is active so the first click interacts (not just activates).
             NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+        .sheet(isPresented: $showingVercelOnboarding) {
+            VercelOnboardingView()
+                .environment(appState)
         }
     }
 }
@@ -285,6 +385,46 @@ struct WatchedProjectRow: View {
                 }
             }
             .frame(width: 120)
+            
+            Button {
+                onRemove()
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Watched Vercel Project Row
+
+struct WatchedVercelProjectRow: View {
+    let project: WatchedVercelProject
+    let onUpdate: (WatchedVercelProject) -> Void
+    let onRemove: () -> Void
+    
+    var body: some View {
+        HStack {
+            Toggle("", isOn: Binding(
+                get: { project.isEnabled },
+                set: {
+                    var updated = project
+                    updated.isEnabled = $0
+                    onUpdate(updated)
+                }
+            ))
+            .labelsHidden()
+            
+            Image(systemName: "triangle.fill")
+                .font(.system(size: 10))
+                .foregroundColor(.primary)
+            
+            Text(project.displayName)
+                .font(.subheadline)
+            
+            Spacer()
             
             Button {
                 onRemove()

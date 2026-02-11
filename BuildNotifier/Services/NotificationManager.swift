@@ -127,6 +127,52 @@ final class NotificationManager: NSObject, ObservableObject {
         UNUserNotificationCenter.current().add(request)
     }
     
+    // MARK: - Vercel Deployment Notifications
+    
+    func sendDeploymentReadyNotification(deployment: VercelDeployment, soundEnabled: Bool = true) {
+        guard isAuthorized else { return }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Deployment Ready"
+        content.subtitle = "\(deployment.projectName) (\(deployment.meta?.branch ?? "unknown"))"
+        content.body = deployment.truncatedCommitMessage
+        content.sound = soundEnabled ? .default : nil
+        content.userInfo = [
+            "deploymentUrl": deployment.deploymentUrl ?? deployment.vercelDashboardUrl,
+            "type": "deployment_ready"
+        ]
+        
+        let request = UNNotificationRequest(
+            identifier: "deployment-ready-\(deployment.uid)",
+            content: content,
+            trigger: nil
+        )
+        
+        UNUserNotificationCenter.current().add(request)
+    }
+    
+    func sendDeploymentErrorNotification(deployment: VercelDeployment, soundEnabled: Bool = true) {
+        guard isAuthorized else { return }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Deployment Failed"
+        content.subtitle = "\(deployment.projectName) (\(deployment.meta?.branch ?? "unknown"))"
+        content.body = deployment.truncatedCommitMessage
+        content.sound = soundEnabled ? .default : nil
+        content.userInfo = [
+            "deploymentUrl": deployment.vercelDashboardUrl,
+            "type": "deployment_error"
+        ]
+        
+        let request = UNNotificationRequest(
+            identifier: "deployment-error-\(deployment.uid)",
+            content: content,
+            trigger: nil
+        )
+        
+        UNUserNotificationCenter.current().add(request)
+    }
+    
     func sendTestNotification() {
         Task {
             // Always check/request authorization first
@@ -229,8 +275,14 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             }
             
         case "OPEN_ACTION", UNNotificationDefaultActionIdentifier:
-            if let urlString = userInfo["buildUrl"] as? String,
-               let url = URL(string: urlString) {
+            var urlString: String?
+            if let buildUrl = userInfo["buildUrl"] as? String, !buildUrl.isEmpty {
+                urlString = buildUrl
+            } else if let deploymentUrl = userInfo["deploymentUrl"] as? String, !deploymentUrl.isEmpty {
+                urlString = deploymentUrl
+            }
+            
+            if let urlString = urlString, let url = URL(string: urlString) {
                 _ = await MainActor.run {
                     NSWorkspace.shared.open(url)
                 }

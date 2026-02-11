@@ -9,7 +9,7 @@ struct MenuBarContentView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("CircleCI Builds")
+                Text("Build Status")
                     .font(.headline)
                 
                 Spacer()
@@ -59,7 +59,7 @@ struct MenuBarContentView: View {
             }
             
             // Content
-            if appState.watchedProjects.isEmpty {
+            if appState.watchedProjects.isEmpty && appState.watchedVercelProjects.isEmpty {
                 emptyState
             } else {
                 buildsList
@@ -88,14 +88,22 @@ struct MenuBarContentView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             
-            Button("Add Projects") {
-                appState.currentScreen = .projectSelection
-                appState.stopPolling()
-                Task {
-                    await appState.loadProjects()
+            if appState.hasCircleCIToken {
+                Button("Add CircleCI Projects") {
+                    appState.currentScreen = .projectSelection
+                    appState.stopPolling()
+                    Task {
+                        await appState.loadProjects()
+                    }
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
             }
-            .buttonStyle(.borderedProminent)
+            
+            Button("Open Settings") {
+                appState.showingSettings = true
+            }
+            .buttonStyle(.bordered)
             .controlSize(.small)
         }
         .frame(maxWidth: .infinity)
@@ -125,25 +133,57 @@ struct MenuBarContentView: View {
                         .padding(.vertical, 8)
                 }
                 
-                // Projects
-                ForEach(appState.groupedBuilds, id: \.project.id) { item in
-                    ProjectSection(
-                        project: item.project,
-                        buildsByBranch: item.builds,
-                        onRetry: { build in
-                            Task {
-                                await appState.retryBuild(build)
+                // CircleCI Projects
+                if !appState.groupedBuilds.isEmpty {
+                    ForEach(appState.groupedBuilds, id: \.project.id) { item in
+                        ProjectSection(
+                            project: item.project,
+                            buildsByBranch: item.builds,
+                            onRetry: { build in
+                                Task {
+                                    await appState.retryBuild(build)
+                                }
+                            },
+                            onCancel: { build in
+                                Task {
+                                    await appState.cancelBuild(build)
+                                }
+                            },
+                            onOpen: { build in
+                                openBuildUrl(build.workflowUrl ?? build.buildUrl)
                             }
-                        },
-                        onCancel: { build in
-                            Task {
-                                await appState.cancelBuild(build)
-                            }
-                        },
-                        onOpen: { build in
-                            openBuildUrl(build.workflowUrl ?? build.buildUrl)
+                        )
+                    }
+                }
+                
+                // Vercel Projects
+                if !appState.watchedVercelProjects.isEmpty {
+                    if !appState.groupedBuilds.isEmpty {
+                        Divider()
+                            .padding(.vertical, 8)
+                        
+                        HStack {
+                            Image(systemName: "triangle.fill")
+                                .font(.system(size: 10))
+                            Text("Vercel Deployments")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                            Spacer()
                         }
-                    )
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 4)
+                    }
+                    
+                    ForEach(appState.watchedVercelProjects) { project in
+                        let deployments = appState.deploymentsByProject[project.id] ?? []
+                        VercelProjectSection(
+                            project: project,
+                            deployments: deployments
+                        )
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                    }
                 }
             }
             .padding(.vertical, 8)
@@ -155,7 +195,7 @@ struct MenuBarContentView: View {
     
     private var footer: some View {
         HStack {
-            if let lastPoll = appState.poller.lastPollTime {
+            if let lastPoll = latestPollTime {
                 Text("Updated \(lastPoll.formatted(.relative(presentation: .named)))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -172,6 +212,11 @@ struct MenuBarContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+    
+    private var latestPollTime: Date? {
+        let times = [appState.poller.lastPollTime, appState.vercelPoller.lastPollTime].compactMap { $0 }
+        return times.max()
     }
     
     // MARK: - Helpers

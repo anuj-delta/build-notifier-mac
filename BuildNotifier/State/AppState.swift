@@ -16,7 +16,7 @@ final class AppState {
     // MARK: - Navigation
     var currentScreen: AppScreen = .loading
     
-    // MARK: - User Data
+    // MARK: - User Data (CircleCI)
     var currentUser: User?
     var projects: [Project] = []
     var buildsByProject: [String: [Build]] = [:]
@@ -25,6 +25,13 @@ final class AppState {
     var notifiedSuccessWorkflows: Set<String> = []
     var notifiedFailedWorkflows: Set<String> = []
     var notifiedStartedWorkflows: Set<String> = []
+    
+    // MARK: - User Data (Vercel)
+    var vercelUser: VercelUserInfo?
+    var vercelTeams: [VercelTeam] = []
+    var vercelProjects: [VercelProject] = []
+    var deploymentsByProject: [String: [VercelDeployment]] = [:]
+    var notifiedVercelDeployments: Set<String> = []
 
     // MARK: - Preferences
     var preferences: UserPreferences = .load()
@@ -36,15 +43,33 @@ final class AppState {
     
     // MARK: - Services
     let poller = BuildPoller()
+    let vercelPoller = VercelPoller()
     
     init() {
         poller.appState = self
+        vercelPoller.appState = self
     }
     
     // MARK: - Computed Properties
     
     var watchedProjects: [WatchedProject] {
         preferences.watchedProjects.filter { $0.isEnabled }
+    }
+    
+    var watchedVercelProjects: [WatchedVercelProject] {
+        preferences.watchedVercelProjects.filter { $0.isEnabled }
+    }
+    
+    var hasCircleCIToken: Bool {
+        KeychainService.shared.hasToken()
+    }
+    
+    var hasVercelToken: Bool {
+        KeychainService.shared.hasVercelToken()
+    }
+    
+    var hasAnyIntegration: Bool {
+        hasCircleCIToken || hasVercelToken
     }
     
     var overallStatus: OverallStatus {
@@ -58,8 +83,8 @@ final class AppState {
         var hasFailure = false
         var hasSuccess = false
         
+        // CircleCI builds
         for (_, builds) in buildsByProject {
-            // Group by branch and check the most recent build per branch
             var branchLatest: [String: Build] = [:]
             for build in builds {
                 let branch = build.branch ?? "unknown"
@@ -76,8 +101,18 @@ final class AppState {
             }
         }
         
-        if hasRunning { return .running }
+        // Vercel deployments
+        for (_, deployments) in deploymentsByProject {
+            if let latest = deployments.first {
+                let status = latest.deploymentStatus
+                if status.isRunning { hasRunning = true }
+                if status.isFailure { hasFailure = true }
+                if status.isSuccess { hasSuccess = true }
+            }
+        }
+        
         if hasFailure { return .failing }
+        if hasRunning { return .running }
         if hasSuccess { return .passing }
         return .unknown
     }
@@ -142,10 +177,19 @@ final class AppState {
         await NotificationManager.shared.requestAuthorization()
         NotificationManager.shared.setupNotificationCategories()
         
-        // Check for existing token
+        // Load Vercel token if available
+        if KeychainService.shared.hasVercelToken() {
+            await VercelAPI.shared.loadTokenFromKeychain()
+        }
+        
+        // Check for existing CircleCI token
         if KeychainService.shared.hasToken() {
             await CircleCIAPI.shared.loadTokenFromKeychain()
             await validateAndLoadData()
+        } else if KeychainService.shared.hasVercelToken() {
+            // Vercel only - go to main
+            currentScreen = .main
+            startVercelPolling()
         } else {
             currentScreen = .onboarding
         }
@@ -210,8 +254,35 @@ final class AppState {
         poller.stopPolling()
     }
     
+    func startVercelPolling() {
+        vercelPoller.startPolling(interval: TimeInterval(preferences.pollingIntervalSeconds))
+    }
+    
+    func stopVercelPolling() {
+        vercelPoller.stopPolling()
+    }
+    
+    func startAllPolling() {
+        if hasCircleCIToken && !preferences.watchedProjects.isEmpty {
+            startPolling()
+        }
+        if hasVercelToken && !preferences.watchedVercelProjects.isEmpty {
+            startVercelPolling()
+        }
+    }
+    
+    func stopAllPolling() {
+        stopPolling()
+        stopVercelPolling()
+    }
+    
     func refreshNow() {
-        poller.poll()
+        if hasCircleCIToken {
+            poller.poll()
+        }
+        if hasVercelToken {
+            vercelPoller.poll()
+        }
     }
     
     func retryBuild(_ build: Build) async {
@@ -294,9 +365,91 @@ final class AppState {
     func savePreferences() {
         preferences.save()
         // Restart polling with new interval
-        if poller.isPolling {
+        if poller.isPolling || vercelPoller.isPolling {
             startPolling()
         }
+    }
+    
+    // MARK: - Vercel Actions
+    
+    func validateVercelToken(_ token: String) async -> Bool {
+        isLoading = true
+        error = nil
+        
+        do {
+            await VercelAPI.shared.setToken(token)
+            let response = try await VercelAPI.shared.validateToken()
+            vercelUser = response.user
+            try KeychainService.shared.saveVercelToken(token)
+            isLoading = false
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            await VercelAPI.shared.clearToken()
+            isLoading = false
+            return false
+        }
+    }
+    
+    func loadVercelTeams() async {
+        isLoading = true
+        error = nil
+        
+        do {
+            vercelTeams = try await VercelAPI.shared.getTeams()
+            isLoading = false
+        } catch {
+            self.error = error.localizedDescription
+            isLoading = false
+        }
+    }
+    
+    func loadVercelProjects(teamId: String?) async {
+        isLoading = true
+        error = nil
+        
+        do {
+            vercelProjects = try await VercelAPI.shared.getProjects(teamId: teamId)
+            isLoading = false
+        } catch {
+            self.error = error.localizedDescription
+            isLoading = false
+        }
+    }
+    
+    func addVercelToWatchlist(_ project: VercelProject, teamId: String?) {
+        let watchedProject = WatchedVercelProject(from: project, teamId: teamId)
+        if !preferences.watchedVercelProjects.contains(where: { $0.id == watchedProject.id }) {
+            preferences.watchedVercelProjects.append(watchedProject)
+            preferences.save()
+        }
+    }
+    
+    func removeVercelFromWatchlist(_ project: WatchedVercelProject) {
+        preferences.watchedVercelProjects.removeAll { $0.id == project.id }
+        preferences.save()
+    }
+    
+    func updateWatchedVercelProject(_ project: WatchedVercelProject) {
+        if let index = preferences.watchedVercelProjects.firstIndex(where: { $0.id == project.id }) {
+            preferences.watchedVercelProjects[index] = project
+            preferences.save()
+        }
+    }
+    
+    func disconnectVercel() {
+        stopVercelPolling()
+        try? KeychainService.shared.deleteVercelToken()
+        Task {
+            await VercelAPI.shared.clearToken()
+        }
+        vercelUser = nil
+        vercelTeams = []
+        vercelProjects = []
+        deploymentsByProject = [:]
+        preferences.watchedVercelProjects = []
+        preferences.selectedVercelTeamId = nil
+        preferences.save()
     }
     
     // MARK: - Private
@@ -308,14 +461,14 @@ final class AppState {
         do {
             currentUser = try await CircleCIAPI.shared.validateToken()
             
-            if preferences.watchedProjects.isEmpty {
+            if preferences.watchedProjects.isEmpty && preferences.watchedVercelProjects.isEmpty {
                 // First time - show project selection
                 await loadProjects()
                 currentScreen = .projectSelection
             } else {
                 // Has projects - go to main
                 currentScreen = .main
-                startPolling()
+                startAllPolling()
             }
         } catch {
             self.error = error.localizedDescription
@@ -330,11 +483,11 @@ final class AppState {
             }
             
             // Transient error (RBAC/403, offline, rate limits, etc). Keep token.
-            if preferences.watchedProjects.isEmpty {
+            if preferences.watchedProjects.isEmpty && preferences.watchedVercelProjects.isEmpty {
                 currentScreen = .onboarding
             } else {
                 currentScreen = .main
-                startPolling()
+                startAllPolling()
             }
         }
         

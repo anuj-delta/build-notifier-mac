@@ -28,9 +28,11 @@ final class KeychainService {
     
     private let service = "com.buildnotifier.circleci"
     private let account = "api_token"
+    private let vercelAccount = "vercel_token"
     
     // Fallback key for UserDefaults (used when keychain access fails due to code signing)
     private let fallbackKey = "circleci_token_fallback"
+    private let vercelFallbackKey = "vercel_token_fallback"
     
     // Persist across rebuilds/reinstalls:
     // - `suiteDefaults`: stable domain independent of bundle ID
@@ -178,6 +180,120 @@ final class KeychainService {
         // Only if UserDefaults empty, attempt keychain
         do {
             _ = try getToken()
+            return true
+        } catch {
+            return false
+        }
+    }
+    
+    // MARK: - Vercel Token Methods
+    
+    func saveVercelToken(_ token: String) throws {
+        guard let data = token.data(using: .utf8) else {
+            throw KeychainError.invalidData
+        }
+        
+        // Always save to UserDefaults fallbacks first
+        suiteDefaults.set(token, forKey: vercelFallbackKey)
+        standardDefaults.set(token, forKey: vercelFallbackKey)
+        suiteDefaults.synchronize()
+        standardDefaults.synchronize()
+        
+        // Delete existing keychain item
+        let deleteQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: vercelAccount
+        ]
+        SecItemDelete(deleteQuery as CFDictionary)
+        
+        // Try to save to keychain (best-effort)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: vercelAccount,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+        ]
+        
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status != errSecSuccess {
+            print("[KeychainService] Vercel keychain save failed: \(status); using UserDefaults fallback")
+        }
+    }
+    
+    func getVercelToken() throws -> String {
+        // Try keychain first
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: vercelAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        
+        if status == errSecSuccess,
+           let data = result as? Data,
+           let token = String(data: data, encoding: .utf8) {
+            // Migrate keychain -> UserDefaults fallback
+            suiteDefaults.set(token, forKey: vercelFallbackKey)
+            standardDefaults.set(token, forKey: vercelFallbackKey)
+            suiteDefaults.synchronize()
+            standardDefaults.synchronize()
+            return token
+        }
+        
+        // Fallback to UserDefaults
+        if let token = suiteDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
+            return token
+        }
+        if let token = standardDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
+            suiteDefaults.set(token, forKey: vercelFallbackKey)
+            suiteDefaults.synchronize()
+            return token
+        }
+        
+        if status == errSecItemNotFound {
+            throw KeychainError.itemNotFound
+        }
+        throw KeychainError.unexpectedStatus(status)
+    }
+    
+    func deleteVercelToken() throws {
+        // Clear UserDefaults fallback
+        suiteDefaults.removeObject(forKey: vercelFallbackKey)
+        standardDefaults.removeObject(forKey: vercelFallbackKey)
+        suiteDefaults.synchronize()
+        standardDefaults.synchronize()
+        
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: vercelAccount
+        ]
+        
+        let status = SecItemDelete(query as CFDictionary)
+        
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+    
+    func hasVercelToken() -> Bool {
+        if let token = suiteDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
+            return true
+        }
+        if let token = standardDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
+            suiteDefaults.set(token, forKey: vercelFallbackKey)
+            suiteDefaults.synchronize()
+            return true
+        }
+        
+        do {
+            _ = try getVercelToken()
             return true
         } catch {
             return false

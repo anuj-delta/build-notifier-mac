@@ -15,11 +15,11 @@ struct OnboardingView: View {
                     .font(.system(size: 48))
                     .foregroundStyle(.blue)
                 
-                Text("CircleCI Notifier")
+                Text("Build Notifier")
                     .font(.title)
                     .fontWeight(.bold)
                 
-                Text("Get build notifications in your menubar")
+                Text("Track CircleCI builds & Vercel deployments")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -83,19 +83,31 @@ struct OnboardingView: View {
             .buttonStyle(.borderedProminent)
             .disabled(apiToken.isEmpty || isValidating)
             
+            // Skip option
+            Text("or")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            Button("Skip - Add integrations later in Settings") {
+                appState.currentScreen = .main
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.blue)
+            
             Spacer()
             
             // Footer
             HStack {
                 Image(systemName: "lock.shield.fill")
                     .foregroundStyle(.green)
-                Text("Token stored securely in Keychain")
+                Text("Tokens stored securely in Keychain")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(32)
-        .frame(width: 400, height: 450)
+        .frame(width: 400, height: 480)
     }
     
     private func openTokenPage() {
