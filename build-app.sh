@@ -15,13 +15,14 @@ ICON_GENERATOR="scripts/generate-app-icon.swift"
 echo "Building BuildNotifier..."
 swift build -c release
 
-if [ ! -d "$ICONSET_DIR" ] && [ -f "$ICON_GENERATOR" ]; then
+if [ -f "$ICON_GENERATOR" ]; then
     echo "Creating icon source set..."
     swift "$ICON_GENERATOR"
 fi
 
-if [ ! -f "$ICON_FILE" ] && [ -d "$ICONSET_DIR" ]; then
+if [ -d "$ICONSET_DIR" ]; then
     echo "Generating app icon..."
+    rm -f "$ICON_FILE"
     if ! iconutil -c icns "$ICONSET_DIR" -o "$ICON_FILE"; then
         ICON_SOURCE="$ICONSET_DIR/icon_512x512@2x.png"
         if [ -f "$ICON_SOURCE" ]; then

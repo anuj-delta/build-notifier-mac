@@ -52,11 +52,12 @@ struct MenuBarLabel: View {
     var body: some View {
         Group {
             if appState.hasActiveBuildActivity {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 16, height: 14)
+                MenuBarSpinnerGlyph()
             } else {
-                MenuBarIdleGlyph()
+                Image(systemName: "circle.dashed")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .symbolRenderingMode(.monochrome)
                     .frame(width: 16, height: 14)
             }
         }
@@ -64,22 +65,22 @@ struct MenuBarLabel: View {
     }
 }
 
-struct MenuBarIdleGlyph: View {
+struct MenuBarSpinnerGlyph: View {
+    @State private var isAnimating = false
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Capsule(style: .continuous)
-                .fill(Color.primary)
-                .frame(width: 12, height: 2.4)
-
-            Capsule(style: .continuous)
-                .fill(Color.primary.opacity(0.92))
-                .frame(width: 9, height: 2.4)
-
-            Capsule(style: .continuous)
-                .fill(Color.primary.opacity(0.82))
-                .frame(width: 11, height: 2.4)
-        }
-        .frame(width: 14, height: 12, alignment: .center)
+        Image(systemName: "arrow.triangle.2.circlepath")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.primary)
+            .symbolRenderingMode(.monochrome)
+            .rotationEffect(.degrees(isAnimating ? 360 : 0))
+            .frame(width: 16, height: 14)
+            .onAppear {
+                if !isAnimating {
+                    isAnimating = true
+                }
+            }
+            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: isAnimating)
     }
 }
 
