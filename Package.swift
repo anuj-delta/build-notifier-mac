@@ -13,6 +13,9 @@ let package = Package(
         .executableTarget(
             name: "BuildNotifier",
             path: "BuildNotifier",
+            exclude: [
+                "Assets"
+            ],
             resources: [
                 .process("Assets.xcassets")
             ]

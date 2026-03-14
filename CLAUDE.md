@@ -22,7 +22,7 @@ swift run
 
 # Clean
 swift package clean
-rm -rf "CircleCI Notifier.app" *.dmg
+rm -rf "Delta Build Notifer.app" *.dmg
 ```
 
 ## Debugging

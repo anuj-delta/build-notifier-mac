@@ -180,6 +180,7 @@ final class AppState {
         // Load Vercel token if available
         if KeychainService.shared.hasVercelToken() {
             await VercelAPI.shared.loadTokenFromKeychain()
+            await restoreVercelSession()
         }
         
         // Check for existing CircleCI token
@@ -454,6 +455,16 @@ final class AppState {
     
     // MARK: - Private
     
+    private func restoreVercelSession() async {
+        do {
+            let response = try await VercelAPI.shared.validateToken()
+            vercelUser = response.user
+        } catch {
+            // Keep the saved token for now; account details can be refreshed later.
+            vercelUser = nil
+        }
+    }
+    
     private func validateAndLoadData() async {
         isLoading = true
         error = nil
@@ -509,6 +520,16 @@ enum OverallStatus {
     case running
     case pendingApproval
     case unknown
+
+    var title: String {
+        switch self {
+        case .passing: return "All clear"
+        case .failing: return "Needs attention"
+        case .running: return "Actively building"
+        case .pendingApproval: return "Approval waiting"
+        case .unknown: return "Waiting for updates"
+        }
+    }
     
     var iconName: String {
         switch self {
@@ -532,11 +553,11 @@ enum OverallStatus {
     
     var menuBarIcon: String {
         switch self {
-        case .passing: return "circle.fill"
-        case .failing: return "circle.fill"
-        case .running: return "circle.dotted"
+        case .passing: return "checkmark.circle.fill"
+        case .failing: return "exclamationmark.circle.fill"
+        case .running: return "arrow.triangle.2.circlepath.circle.fill"
         case .pendingApproval: return "pause.circle.fill"
-        case .unknown: return "circle"
+        case .unknown: return "circle.dashed"
         }
     }
 }

@@ -41,7 +41,20 @@ final class KeychainService {
     private let standardDefaults = UserDefaults.standard
     private let legacySuiteDefaults = UserDefaults(suiteName: "group.buildnotifier.circleci.shared")
     
+    // This app is distributed as an ad-hoc signed build in development/internal use.
+    // Re-signing changes the code identity and causes repeated Keychain access prompts,
+    // so token persistence intentionally relies on stable UserDefaults storage instead.
+    private let usesKeychain = false
+    
     private init() {}
+    
+    func maskedCircleCIToken() -> String? {
+        maskedToken(for: fallbackKey)
+    }
+    
+    func maskedVercelToken() -> String? {
+        maskedToken(for: vercelFallbackKey)
+    }
     
     // MARK: - Save Token
     
@@ -55,6 +68,8 @@ final class KeychainService {
         standardDefaults.set(token, forKey: fallbackKey)
         suiteDefaults.synchronize()
         standardDefaults.synchronize()
+        
+        guard usesKeychain else { return }
         
         // Delete existing keychain item (but NOT the UserDefaults fallback)
         let deleteQuery: [String: Any] = [
@@ -83,30 +98,7 @@ final class KeychainService {
     // MARK: - Get Token
     
     func getToken() throws -> String {
-        // Try keychain first
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        
-        if status == errSecSuccess,
-           let data = result as? Data,
-           let token = String(data: data, encoding: .utf8) {
-            // Migrate keychain -> UserDefaults fallback so signature changes don't lose the token.
-            suiteDefaults.set(token, forKey: fallbackKey)
-            standardDefaults.set(token, forKey: fallbackKey)
-            suiteDefaults.synchronize()
-            standardDefaults.synchronize()
-            return token
-        }
-        
-        // Fallback to UserDefaults (for dev builds / reinstall)
+        // Prefer stable app storage to avoid Keychain prompts for ad-hoc signed builds.
         if let token = suiteDefaults.string(forKey: fallbackKey), !token.isEmpty {
             return token
         }
@@ -122,6 +114,31 @@ final class KeychainService {
             // Ensure suite has a copy
             suiteDefaults.set(token, forKey: fallbackKey)
             suiteDefaults.synchronize()
+            return token
+        }
+        
+        guard usesKeychain else {
+            throw KeychainError.itemNotFound
+        }
+        
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        
+        if status == errSecSuccess,
+           let data = result as? Data,
+           let token = String(data: data, encoding: .utf8) {
+            suiteDefaults.set(token, forKey: fallbackKey)
+            standardDefaults.set(token, forKey: fallbackKey)
+            suiteDefaults.synchronize()
+            standardDefaults.synchronize()
             return token
         }
         
@@ -141,6 +158,8 @@ final class KeychainService {
         suiteDefaults.synchronize()
         standardDefaults.synchronize()
         legacySuiteDefaults?.synchronize()
+        
+        guard usesKeychain else { return }
         
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -177,6 +196,8 @@ final class KeychainService {
             return true
         }
         
+        guard usesKeychain else { return false }
+        
         // Only if UserDefaults empty, attempt keychain
         do {
             _ = try getToken()
@@ -198,6 +219,8 @@ final class KeychainService {
         standardDefaults.set(token, forKey: vercelFallbackKey)
         suiteDefaults.synchronize()
         standardDefaults.synchronize()
+        
+        guard usesKeychain else { return }
         
         // Delete existing keychain item
         let deleteQuery: [String: Any] = [
@@ -223,7 +246,19 @@ final class KeychainService {
     }
     
     func getVercelToken() throws -> String {
-        // Try keychain first
+        if let token = suiteDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
+            return token
+        }
+        if let token = standardDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
+            suiteDefaults.set(token, forKey: vercelFallbackKey)
+            suiteDefaults.synchronize()
+            return token
+        }
+        
+        guard usesKeychain else {
+            throw KeychainError.itemNotFound
+        }
+        
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -238,21 +273,10 @@ final class KeychainService {
         if status == errSecSuccess,
            let data = result as? Data,
            let token = String(data: data, encoding: .utf8) {
-            // Migrate keychain -> UserDefaults fallback
             suiteDefaults.set(token, forKey: vercelFallbackKey)
             standardDefaults.set(token, forKey: vercelFallbackKey)
             suiteDefaults.synchronize()
             standardDefaults.synchronize()
-            return token
-        }
-        
-        // Fallback to UserDefaults
-        if let token = suiteDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
-            return token
-        }
-        if let token = standardDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
-            suiteDefaults.set(token, forKey: vercelFallbackKey)
-            suiteDefaults.synchronize()
             return token
         }
         
@@ -268,6 +292,8 @@ final class KeychainService {
         standardDefaults.removeObject(forKey: vercelFallbackKey)
         suiteDefaults.synchronize()
         standardDefaults.synchronize()
+        
+        guard usesKeychain else { return }
         
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -292,11 +318,30 @@ final class KeychainService {
             return true
         }
         
+        guard usesKeychain else { return false }
+        
         do {
             _ = try getVercelToken()
             return true
         } catch {
             return false
         }
+    }
+    
+    private func maskedToken(for key: String) -> String? {
+        let token =
+            suiteDefaults.string(forKey: key) ??
+            standardDefaults.string(forKey: key) ??
+            legacySuiteDefaults?.string(forKey: key)
+        
+        guard let token, !token.isEmpty else { return nil }
+        
+        if token.count <= 8 {
+            let visiblePrefix = token.prefix(min(2, token.count))
+            let hiddenCount = max(token.count - visiblePrefix.count, 0)
+            return "\(visiblePrefix)\(String(repeating: "•", count: hiddenCount))"
+        }
+        
+        return "\(token.prefix(4))••••\(token.suffix(4))"
     }
 }

@@ -90,7 +90,29 @@ enum BuildStatus: String {
     case unknown
     
     init(from status: String?) {
-        self = BuildStatus(rawValue: status ?? "") ?? .unknown
+        self = BuildStatus(rawValue: Self.normalize(status)) ?? .unknown
+    }
+    
+    init(status: String?, outcome: String?, lifecycle: String?) {
+        let normalizedOutcome = Self.normalize(outcome)
+        let normalizedLifecycle = Self.normalize(lifecycle)
+        let normalizedStatus = Self.normalize(status)
+        
+        if normalizedOutcome == "canceled" || normalizedLifecycle == "canceled" {
+            self = .canceled
+            return
+        }
+        
+        if let outcomeStatus = BuildStatus(rawValue: normalizedOutcome), outcomeStatus != .unknown {
+            self = outcomeStatus
+            return
+        }
+        
+        self = BuildStatus(rawValue: normalizedStatus) ?? .unknown
+    }
+    
+    private static func normalize(_ value: String?) -> String {
+        (value ?? "").lowercased().replacingOccurrences(of: "cancelled", with: "canceled")
     }
     
     var isSuccess: Bool {
@@ -157,7 +179,7 @@ enum BuildStatus: String {
 
 extension Build {
     var buildStatus: BuildStatus {
-        BuildStatus(from: status)
+        BuildStatus(status: status, outcome: outcome, lifecycle: lifecycle)
     }
     
     var projectSlug: String {
