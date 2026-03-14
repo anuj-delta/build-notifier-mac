@@ -3,6 +3,7 @@ import SwiftUI
 struct ProjectSection: View {
     let project: WatchedProject
     let buildsByBranch: [String: [Build]]
+    let isFiltered: Bool
     let onRetry: (Build) -> Void
     let onCancel: (Build) -> Void
     let onOpen: (Build) -> Void
@@ -10,7 +11,7 @@ struct ProjectSection: View {
     @State private var isExpanded = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 7) {
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) {
                     isExpanded.toggle()
@@ -31,7 +32,7 @@ struct ProjectSection: View {
                             .font(.subheadline)
                             .fontWeight(.semibold)
 
-                        Text("\(sortedBranches.count) tracked branches")
+                        Text(branchCountLabel)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -45,7 +46,7 @@ struct ProjectSection: View {
             .buttonStyle(.plain)
 
             if isExpanded {
-                VStack(spacing: 8) {
+                VStack(spacing: 6) {
                     ForEach(sortedBranches, id: \.self) { branch in
                         if let builds = buildsByBranch[branch], let build = builds.first {
                             BuildRow(
@@ -59,7 +60,7 @@ struct ProjectSection: View {
                 }
             }
         }
-        .padding(12)
+        .padding(11)
         .background(Color(nsColor: .controlBackgroundColor))
         .cornerRadius(14)
     }
@@ -99,6 +100,13 @@ struct ProjectSection: View {
             .background(color.opacity(0.12))
             .cornerRadius(999)
     }
+
+    private var branchCountLabel: String {
+        if isFiltered {
+            return "\(sortedBranches.count) matching branches"
+        }
+        return "\(sortedBranches.count) tracked branches"
+    }
 }
 
 struct BuildRow: View {
@@ -115,17 +123,19 @@ struct BuildRow: View {
         Button {
             onOpen()
         } label: {
-            HStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 11) {
                 Image(systemName: build.buildStatus.iconName)
                     .font(.subheadline)
                     .foregroundStyle(statusColor)
-                    .frame(width: 18)
+                    .frame(width: 18, alignment: .top)
+                    .padding(.top, 1)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(build.branch ?? "unknown")
                             .font(.caption)
                             .fontWeight(.semibold)
+                            .lineLimit(1)
 
                         Text("#\(build.buildNum)")
                             .font(.caption2)
@@ -154,7 +164,7 @@ struct BuildRow: View {
                         .background(statusColor.opacity(0.12))
                         .cornerRadius(999)
                 }
-                .frame(width: 74, alignment: .trailing)
+                .frame(width: 62, alignment: .trailing)
 
                 actionButtons
             }
@@ -224,7 +234,7 @@ struct BuildRow: View {
                 .help("Cancel build")
             }
         }
-        .frame(width: 56, alignment: .trailing)
+        .frame(width: 48, alignment: .trailing)
         .opacity(isHovered && hasActions ? 1 : 0)
         .allowsHitTesting(isHovered && hasActions)
     }

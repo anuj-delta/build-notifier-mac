@@ -4,17 +4,19 @@ struct VercelDeploymentRow: View {
     let deployment: VercelDeployment
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 11) {
             Image(systemName: deployment.deploymentStatus.iconName)
                 .font(.subheadline)
                 .foregroundStyle(statusColor)
-                .frame(width: 18)
+                .frame(width: 18, alignment: .top)
+                .padding(.top, 1)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(primaryLabel)
                         .font(.caption)
                         .fontWeight(.semibold)
+                        .lineLimit(1)
                     Text(deployment.relativeTime)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -33,6 +35,7 @@ struct VercelDeploymentRow: View {
                     Text(sha)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
 
                 Text(deployment.deploymentStatus.displayName)
@@ -44,6 +47,7 @@ struct VercelDeploymentRow: View {
                     .background(statusColor.opacity(0.12))
                     .cornerRadius(999)
             }
+            .frame(width: 62, alignment: .trailing)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -86,10 +90,11 @@ struct VercelDeploymentRow: View {
 struct VercelProjectSection: View {
     let project: WatchedVercelProject
     let deployments: [VercelDeployment]
+    let isFiltered: Bool
     @State private var isExpanded = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 7) {
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) {
                     isExpanded.toggle()
@@ -110,7 +115,7 @@ struct VercelProjectSection: View {
                             .font(.subheadline)
                             .fontWeight(.semibold)
 
-                        Text("\(deployments.count) recent deployments")
+                        Text(deploymentCountLabel)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -143,7 +148,7 @@ struct VercelProjectSection: View {
                         .background(Color(nsColor: .windowBackgroundColor))
                         .cornerRadius(12)
                 } else {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 6) {
                         ForEach(deployments.prefix(5)) { deployment in
                             VercelDeploymentRow(deployment: deployment)
                         }
@@ -151,9 +156,16 @@ struct VercelProjectSection: View {
                 }
             }
         }
-        .padding(12)
+        .padding(11)
         .background(Color(nsColor: .controlBackgroundColor))
         .cornerRadius(14)
+    }
+
+    private var deploymentCountLabel: String {
+        if isFiltered {
+            return "\(deployments.count) matching deployments"
+        }
+        return "\(deployments.count) recent deployments"
     }
 
     private func latestStatusColor(_ deployment: VercelDeployment) -> Color {
