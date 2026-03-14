@@ -11,6 +11,7 @@ final class BuildPoller: ObservableObject {
     
     private var timer: Timer?
     private var pollTask: Task<Void, Never>?
+    private var hasEstablishedBaseline = false
     
     weak var appState: AppState?
     
@@ -20,8 +21,9 @@ final class BuildPoller: ObservableObject {
     
     func startPolling(interval: TimeInterval = 60) {
         stopPolling()
-        
+
         isPolling = true
+        hasEstablishedBaseline = false
         
         // Poll immediately
         poll()
@@ -40,6 +42,7 @@ final class BuildPoller: ObservableObject {
         pollTask?.cancel()
         pollTask = nil
         isPolling = false
+        hasEstablishedBaseline = false
     }
     
     func poll() {
@@ -167,7 +170,16 @@ final class BuildPoller: ObservableObject {
         appState.buildsByProject = newBuildsByProject
         appState.pendingApprovals = newPendingApprovals
         lastPollTime = Date()
-        
+
+        if !hasEstablishedBaseline {
+            await establishNotificationBaseline(
+                current: newBuildsByProject,
+                currentApprovals: newPendingApprovals
+            )
+            hasEstablishedBaseline = true
+            return
+        }
+
         // Check for status changes and send notifications
         await checkForStatusChanges(
             previous: previousBuilds,
@@ -179,6 +191,57 @@ final class BuildPoller: ObservableObject {
         
         // Update notified approvals
         appState.notifiedApprovals = Set(newPendingApprovals.map { $0.id })
+    }
+
+    private func establishNotificationBaseline(
+        current: [String: [Build]],
+        currentApprovals: [PendingApproval]
+    ) async {
+        guard let appState = appState else { return }
+
+        var startedWorkflows = Set<String>()
+        var failedWorkflows = Set<String>()
+        var successWorkflows = Set<String>()
+        var buildsByWorkflow: [String: [Build]] = [:]
+
+        for (_, currentBuilds) in current {
+            for build in currentBuilds {
+                guard let workflowId = build.workflows?.workflowId else { continue }
+                buildsByWorkflow[workflowId, default: []].append(build)
+            }
+        }
+
+        for (workflowId, builds) in buildsByWorkflow {
+            if builds.contains(where: { $0.buildStatus.isRunning }) {
+                startedWorkflows.insert(workflowId)
+            }
+
+            if builds.contains(where: { $0.buildStatus.isFailure }) {
+                failedWorkflows.insert(workflowId)
+                continue
+            }
+
+            do {
+                let allJobs = try await CircleCIAPI.shared.getWorkflowJobs(workflowId: workflowId)
+                let hasIncompleteJobs = allJobs.contains { job in
+                    let status = job.status
+                    return status == "running" || status == "queued" ||
+                           status == "blocked" || status == "not_run" ||
+                           status == "on_hold"
+                }
+
+                if !hasIncompleteJobs && allJobs.allSatisfy({ $0.status == "success" }) {
+                    successWorkflows.insert(workflowId)
+                }
+            } catch {
+                // Ignore transient baseline fetch errors; future polls can recover.
+            }
+        }
+
+        appState.notifiedApprovals = Set(currentApprovals.map(\.id))
+        appState.notifiedStartedWorkflows = startedWorkflows
+        appState.notifiedFailedWorkflows = failedWorkflows
+        appState.notifiedSuccessWorkflows = successWorkflows
     }
     
     // MARK: - Status Change Detection

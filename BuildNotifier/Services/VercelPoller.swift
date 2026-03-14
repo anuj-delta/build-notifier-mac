@@ -11,6 +11,7 @@ final class VercelPoller: ObservableObject {
     
     private var timer: Timer?
     private var pollTask: Task<Void, Never>?
+    private var hasEstablishedBaseline = false
     
     weak var appState: AppState?
     
@@ -20,9 +21,10 @@ final class VercelPoller: ObservableObject {
     
     func startPolling(interval: TimeInterval = 60) {
         stopPolling()
-        
+
         isPolling = true
-        
+        hasEstablishedBaseline = false
+
         poll()
         
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
@@ -38,6 +40,7 @@ final class VercelPoller: ObservableObject {
         pollTask?.cancel()
         pollTask = nil
         isPolling = false
+        hasEstablishedBaseline = false
     }
     
     func poll() {
@@ -89,7 +92,13 @@ final class VercelPoller: ObservableObject {
         
         appState.deploymentsByProject = newDeploymentsByProject
         lastPollTime = Date()
-        
+
+        if !hasEstablishedBaseline {
+            establishNotificationBaseline(current: newDeploymentsByProject)
+            hasEstablishedBaseline = true
+            return
+        }
+
         await checkForStatusChanges(
             previous: previousDeployments,
             current: newDeploymentsByProject,
@@ -138,5 +147,20 @@ final class VercelPoller: ObservableObject {
         }
         
         appState.notifiedVercelDeployments = newNotifiedDeployments
+    }
+
+    private func establishNotificationBaseline(current: [String: [VercelDeployment]]) {
+        guard let appState = appState else { return }
+
+        var baselineKeys = Set<String>()
+        for (_, deployments) in current {
+            for deployment in deployments {
+                let status = deployment.deploymentStatus
+                guard status.isSuccess || status.isFailure else { continue }
+                baselineKeys.insert("\(deployment.uid)-\(status.rawValue)")
+            }
+        }
+
+        appState.notifiedVercelDeployments = baselineKeys
     }
 }

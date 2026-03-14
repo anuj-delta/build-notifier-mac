@@ -3,44 +3,46 @@ import SwiftUI
 struct ProjectSection: View {
     let project: WatchedProject
     let buildsByBranch: [String: [Build]]
+    let isFiltered: Bool
     let onRetry: (Build) -> Void
     let onCancel: (Build) -> Void
     let onOpen: (Build) -> Void
-    
+
     @State private var isExpanded = true
-    
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            // Project Header
+        VStack(alignment: .leading, spacing: 7) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(.easeInOut(duration: 0.18)) {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .frame(width: 12)
-                    
-                    Text(project.displayName)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    
+
+                    ProviderMark(style: .circleCI, color: Color.accentColor, size: 13)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(project.displayName)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+
+                        Text(branchCountLabel)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Spacer()
-                    
-                    // Status indicator
-                    statusIndicator
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            
-            // Builds
+
             if isExpanded {
-                VStack(spacing: 2) {
+                VStack(spacing: 6) {
                     ForEach(sortedBranches, id: \.self) { branch in
                         if let builds = buildsByBranch[branch], let build = builds.first {
                             BuildRow(
@@ -54,131 +56,78 @@ struct ProjectSection: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(11)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(14)
     }
-    
+
     private var sortedBranches: [String] {
         buildsByBranch.keys.sorted { b1, b2 in
             let date1 = buildsByBranch[b1]?.first?.activityDate ?? .distantPast
             let date2 = buildsByBranch[b2]?.first?.activityDate ?? .distantPast
-            return date1 > date2  // Most recent first
+            return date1 > date2
         }
     }
-    
-    private var statusIndicator: some View {
-        let allBuilds = buildsByBranch.values.flatMap { $0 }
-        let hasFailure = allBuilds.contains { $0.buildStatus.isFailure }
-        let hasRunning = allBuilds.contains { $0.buildStatus.isRunning }
-        
-        let color: Color
-        let icon: String
-        
-        if hasFailure {
-            color = .red
-            icon = "xmark.circle.fill"
-        } else if hasRunning {
-            color = .yellow
-            icon = "arrow.triangle.2.circlepath"
-        } else {
-            color = .green
-            icon = "checkmark.circle.fill"
+
+    private var branchCountLabel: String {
+        if isFiltered {
+            return "\(sortedBranches.count) matching branches"
         }
-        
-        return Image(systemName: icon)
-            .font(.caption)
-            .foregroundStyle(color)
+        return "\(sortedBranches.count) tracked branches"
     }
 }
-
-// MARK: - Build Row
 
 struct BuildRow: View {
     let build: Build
     let onRetry: () -> Void
     let onCancel: () -> Void
     let onOpen: () -> Void
-    
+
     @State private var isHovered = false
     @State private var showRetryConfirmation = false
     @State private var showCancelConfirmation = false
-    
+
     var body: some View {
         Button {
             onOpen()
         } label: {
-            HStack(spacing: 8) {
-                // Status icon
-                statusIcon
-                
-                // Branch & Info
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
+            HStack(alignment: .top, spacing: 11) {
+                leadingIndicator
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
                         Text(build.branch ?? "unknown")
                             .font(.caption)
-                            .fontWeight(.medium)
-                        
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+
                         Text("#\(build.buildNum)")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
-                    
+
                     Text(build.truncatedSubject)
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                
+
                 Spacer()
-                
-                // Time
+
                 Text(build.relativeTime)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                
-                // Actions on hover
-                if isHovered {
-                    HStack(spacing: 4) {
-                        // Retry button for failed builds
-                        if build.buildStatus.isFailure {
-                            Button {
-                                showRetryConfirmation = true
-                            } label: {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.mini)
-                            .help("Retry build")
-                        }
-                        
-                        // Cancel button for running builds
-                        if build.buildStatus.isRunning {
-                            Button {
-                                showCancelConfirmation = true
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.mini)
-                            .help("Cancel build")
-                        }
-                        
-                        // External link indicator
-                        Image(systemName: "arrow.up.forward")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                    .frame(width: 62, alignment: .trailing)
+
+                actionButtons
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(isHovered ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.5) : Color.clear)
-        .cornerRadius(4)
-        .padding(.horizontal, 8)
+        .padding(.vertical, 10)
+        .background(isHovered ? Color.accentColor.opacity(0.08) : Color(nsColor: .windowBackgroundColor))
+        .cornerRadius(12)
         .onHover { hovering in
             isHovered = hovering
         }
@@ -207,28 +156,80 @@ struct BuildRow: View {
             Text("This will stop the currently running build.")
         }
     }
-    
-    private var statusIcon: some View {
-        let status = build.buildStatus
-        let color: Color
-        
-        switch status {
-        case .success, .fixed:
-            color = .green
-        case .failed, .timedout, .infrastructureFail:
-            color = .red
-        case .canceled:
-            color = .gray
-        case .running, .notRunning, .queued, .scheduled:
-            color = .yellow
-        case .onHold:
-            color = .orange
-        default:
-            color = .gray
+
+    @ViewBuilder
+    private var leadingIndicator: some View {
+        if build.buildStatus.isRunning {
+            ProgressView()
+                .controlSize(.small)
+                .tint(.orange)
+                .frame(width: 18, height: 18, alignment: .top)
+                .padding(.top, 1)
+        } else {
+            Image(systemName: build.buildStatus.iconName)
+                .font(.subheadline)
+                .foregroundStyle(statusColor)
+                .frame(width: 18, alignment: .top)
+                .padding(.top, 1)
         }
-        
-        return Image(systemName: status.iconName)
-            .font(.caption)
-            .foregroundStyle(color)
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 6) {
+            if build.buildStatus.isFailure {
+                Button {
+                    showRetryConfirmation = true
+                } label: {
+                    actionLabel("Retry")
+                }
+                .buttonStyle(.plain)
+                .help("Retry build")
+            }
+
+            if build.buildStatus.isRunning {
+                Button {
+                    showCancelConfirmation = true
+                } label: {
+                    actionLabel("Cancel")
+                }
+                .buttonStyle(.plain)
+                .help("Cancel build")
+            }
+        }
+        .frame(width: 72, alignment: .trailing)
+        .opacity(isHovered && hasActions ? 1 : 0)
+        .allowsHitTesting(isHovered && hasActions)
+    }
+
+    private func actionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(Capsule(style: .continuous))
+    }
+
+    private var hasActions: Bool {
+        build.buildStatus.isFailure || build.buildStatus.isRunning
+    }
+
+    private var statusColor: Color {
+        switch build.buildStatus {
+        case .success, .fixed:
+            return .green
+        case .failed, .timedout, .infrastructureFail:
+            return .red
+        case .canceled:
+            return .gray
+        case .running, .notRunning, .queued, .scheduled:
+            return .orange
+        case .onHold:
+            return .yellow
+        default:
+            return .gray
+        }
     }
 }

@@ -3,14 +3,36 @@
 
 set -e
 
-APP_NAME="CircleCI Notifier"
+APP_NAME="Delta Build Notifer"
 BUNDLE_ID="com.buildnotifier.circleci"
 VERSION="1.0.0"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 ENTITLEMENTS_FILE="entitlements.plist"
+ICONSET_DIR="BuildNotifier/Assets/AppIcon.iconset"
+ICON_FILE="BuildNotifier/Assets/AppIcon.icns"
+ICON_GENERATOR="scripts/generate-app-icon.swift"
 
 echo "Building BuildNotifier..."
 swift build -c release
+
+if [ -f "$ICON_GENERATOR" ]; then
+    echo "Creating icon source set..."
+    swift "$ICON_GENERATOR"
+fi
+
+if [ -d "$ICONSET_DIR" ]; then
+    echo "Generating app icon..."
+    rm -f "$ICON_FILE"
+    if ! iconutil -c icns "$ICONSET_DIR" -o "$ICON_FILE"; then
+        ICON_SOURCE="$ICONSET_DIR/icon_512x512@2x.png"
+        if [ -f "$ICON_SOURCE" ]; then
+            TEMP_TIFF="/tmp/build-notifier-app-icon.tiff"
+            sips -s format tiff "$ICON_SOURCE" --out "$TEMP_TIFF" >/dev/null
+            tiff2icns "$TEMP_TIFF" "$ICON_FILE"
+            rm -f "$TEMP_TIFF"
+        fi
+    fi
+fi
 
 echo "Creating app bundle..."
 APP_DIR="$APP_NAME.app"
@@ -33,6 +55,10 @@ if [ -d ".build/release/BuildNotifier_BuildNotifier.bundle" ]; then
     cp -r .build/release/BuildNotifier_BuildNotifier.bundle "$RESOURCES_DIR/"
 fi
 
+if [ -f "$ICON_FILE" ]; then
+    cp "$ICON_FILE" "$RESOURCES_DIR/AppIcon.icns"
+fi
+
 # Create Info.plist
 cat > "$CONTENTS_DIR/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -53,6 +79,8 @@ cat > "$CONTENTS_DIR/Info.plist" << EOF
     <string>APPL</string>
     <key>CFBundleExecutable</key>
     <string>BuildNotifier</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>

@@ -3,8 +3,8 @@
 
 set -e
 
-APP_NAME="CircleCI Notifier"
-DMG_NAME="CircleCI-Notifier"
+APP_NAME="Delta Build Notifer"
+DMG_NAME="Delta-Build-Notifer"
 VERSION="1.0.0"
 
 # First build the app

@@ -18,7 +18,8 @@ struct BuildNotifierApp: App {
         Window("Settings", id: "settings") {
             SettingsView(appState: appState)
         }
-        .windowResizability(.contentSize)
+        .defaultSize(width: 920, height: 640)
+        .windowResizability(.contentMinSize)
         .defaultPosition(.center)
         
         // Onboarding Window
@@ -37,6 +38,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon - run as menubar-only app
         NSApp.setActivationPolicy(.accessory)
+        if let icon = AppBrandAssets.applicationIcon() {
+            NSApp.applicationIconImage = icon
+        }
     }
 }
 
@@ -46,9 +50,37 @@ struct MenuBarLabel: View {
     @Bindable var appState: AppState
 
     var body: some View {
-        Image(systemName: appState.overallStatus.menuBarIcon)
-            .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(appState.overallStatus.color)
+        Group {
+            if appState.hasActiveBuildActivity {
+                MenuBarSpinnerGlyph()
+            } else {
+                Image(systemName: "circle.dashed")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .symbolRenderingMode(.monochrome)
+                    .frame(width: 16, height: 14)
+            }
+        }
+        .accessibilityLabel(appState.hasActiveBuildActivity ? "Builds running" : "Idle")
+    }
+}
+
+struct MenuBarSpinnerGlyph: View {
+    @State private var isAnimating = false
+
+    var body: some View {
+        Image(systemName: "arrow.triangle.2.circlepath")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.primary)
+            .symbolRenderingMode(.monochrome)
+            .rotationEffect(.degrees(isAnimating ? 360 : 0))
+            .frame(width: 16, height: 14)
+            .onAppear {
+                if !isAnimating {
+                    isAnimating = true
+                }
+            }
+            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: isAnimating)
     }
 }
 
@@ -68,58 +100,26 @@ struct MenuBarExtraContent: View {
                     }
                 
             case .onboarding:
-                VStack(spacing: 16) {
-                    Text("Setup Required")
-                        .font(.headline)
-                    
-                    Text("Click to configure your CircleCI token")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    
-                    Button("Open Setup") {
+                PopoverWelcomeCard(
+                    title: "Setup required",
+                    subtitle: "Connect CircleCI or skip into Settings to add integrations later.",
+                    buttonTitle: "Open Setup",
+                    action: {
                         openWindow(id: "onboarding")
                         NSApplication.shared.activate(ignoringOtherApps: true)
                     }
-                    .buttonStyle(.borderedProminent)
-                    
-                    Divider()
-                        .padding(.vertical, 4)
-                    
-                    Button("Quit") {
-                        NSApplication.shared.terminate(nil)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                }
-                .padding(24)
-                .frame(width: 280)
+                )
                 
             case .projectSelection:
-                VStack(spacing: 16) {
-                    Text("Select Projects")
-                        .font(.headline)
-                    
-                    Text("Click to choose projects to watch")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    
-                    Button("Open Project Selector") {
+                PopoverWelcomeCard(
+                    title: "Choose projects",
+                    subtitle: "Pick the CircleCI repositories you want to watch from the menu bar.",
+                    buttonTitle: "Open Project Selector",
+                    action: {
                         openWindow(id: "onboarding")
                         NSApplication.shared.activate(ignoringOtherApps: true)
                     }
-                    .buttonStyle(.borderedProminent)
-                    
-                    Divider()
-                        .padding(.vertical, 4)
-                    
-                    Button("Quit") {
-                        NSApplication.shared.terminate(nil)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                }
-                .padding(24)
-                .frame(width: 280)
+                )
                 
             case .main:
                 MenuBarContentView(appState: appState)
@@ -145,9 +145,7 @@ struct OnboardingWindowContent: View {
                 
             default:
                 VStack(spacing: 16) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.largeTitle)
-                        .foregroundStyle(.green)
+                    AppBrandIcon(size: 54)
                     
                     Text("Setup Complete!")
                         .font(.headline)
@@ -172,13 +170,56 @@ struct OnboardingWindowContent: View {
 
 struct LoadingView: View {
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
+            AppBrandIcon(size: 44)
+                .opacity(0.92)
+
             ProgressView()
-            Text("Loading...")
+
+            Text("Loading your build status")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .padding(24)
-        .frame(width: 200)
+        .frame(width: 220)
+    }
+}
+
+struct PopoverWelcomeCard: View {
+    let title: String
+    let subtitle: String
+    let buttonTitle: String
+    let action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            AppBrandIcon(size: 48)
+
+            VStack(spacing: 6) {
+                Text(title)
+                    .font(.headline)
+
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button(buttonTitle) {
+                action()
+            }
+            .buttonStyle(.borderedProminent)
+
+            Divider()
+                .padding(.vertical, 2)
+
+            Button("Quit") {
+                NSApplication.shared.terminate(nil)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+        .padding(24)
+        .frame(width: 300)
     }
 }
