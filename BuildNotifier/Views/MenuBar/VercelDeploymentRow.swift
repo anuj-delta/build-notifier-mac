@@ -5,11 +5,7 @@ struct VercelDeploymentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 11) {
-            Image(systemName: deployment.deploymentStatus.iconName)
-                .font(.subheadline)
-                .foregroundStyle(statusColor)
-                .frame(width: 18, alignment: .top)
-                .padding(.top, 1)
+            leadingIndicator
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -30,24 +26,10 @@ struct VercelDeploymentRow: View {
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 4) {
-                if let sha = deployment.meta?.commitSha {
-                    Text(sha)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Text(deployment.deploymentStatus.displayName)
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(statusColor)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(statusColor.opacity(0.12))
-                    .cornerRadius(999)
-            }
-            .frame(width: 62, alignment: .trailing)
+            Text(deployment.relativeTime)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(width: 62, alignment: .trailing)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -56,6 +38,23 @@ struct VercelDeploymentRow: View {
         .contentShape(Rectangle())
         .onTapGesture {
             openDeployment()
+        }
+    }
+
+    @ViewBuilder
+    private var leadingIndicator: some View {
+        if deployment.deploymentStatus.isRunning {
+            ProgressView()
+                .controlSize(.small)
+                .tint(.orange)
+                .frame(width: 18, height: 18, alignment: .top)
+                .padding(.top, 1)
+        } else {
+            Image(systemName: deployment.deploymentStatus.iconName)
+                .font(.subheadline)
+                .foregroundStyle(statusColor)
+                .frame(width: 18, alignment: .top)
+                .padding(.top, 1)
         }
     }
 
@@ -121,17 +120,6 @@ struct VercelProjectSection: View {
                     }
 
                     Spacer()
-
-                    if let latest = deployments.first {
-                        Text(latest.deploymentStatus.displayName)
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(latestStatusColor(latest))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(latestStatusColor(latest).opacity(0.12))
-                            .cornerRadius(999)
-                    }
                 }
                 .contentShape(Rectangle())
             }
@@ -168,13 +156,4 @@ struct VercelProjectSection: View {
         return "\(deployments.count) recent deployments"
     }
 
-    private func latestStatusColor(_ deployment: VercelDeployment) -> Color {
-        switch deployment.deploymentStatus {
-        case .ready: return .green
-        case .error: return .red
-        case .canceled: return .gray
-        case .building, .queued, .initializing: return .orange
-        case .unknown: return .gray
-        }
-    }
 }

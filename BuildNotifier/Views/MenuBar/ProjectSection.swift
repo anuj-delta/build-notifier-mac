@@ -23,9 +23,7 @@ struct ProjectSection: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 12)
 
-                    Image(systemName: "arrow.triangle.branch")
-                        .font(.caption)
-                        .foregroundStyle(Color.accentColor)
+                    ProviderMark(style: .circleCI, color: Color.accentColor, size: 13)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(project.displayName)
@@ -38,8 +36,6 @@ struct ProjectSection: View {
                     }
 
                     Spacer()
-
-                    statusBadge
                 }
                 .contentShape(Rectangle())
             }
@@ -73,34 +69,6 @@ struct ProjectSection: View {
         }
     }
 
-    private var statusBadge: some View {
-        let allBuilds = buildsByBranch.values.flatMap { $0 }
-        let hasFailure = allBuilds.contains { $0.buildStatus.isFailure }
-        let hasRunning = allBuilds.contains { $0.buildStatus.isRunning }
-        let title: String
-        let color: Color
-
-        if hasFailure {
-            title = "Failing"
-            color = .red
-        } else if hasRunning {
-            title = "Running"
-            color = .orange
-        } else {
-            title = "Passing"
-            color = .green
-        }
-
-        return Text(title)
-            .font(.caption2)
-            .fontWeight(.semibold)
-            .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(color.opacity(0.12))
-            .cornerRadius(999)
-    }
-
     private var branchCountLabel: String {
         if isFiltered {
             return "\(sortedBranches.count) matching branches"
@@ -124,11 +92,7 @@ struct BuildRow: View {
             onOpen()
         } label: {
             HStack(alignment: .top, spacing: 11) {
-                Image(systemName: build.buildStatus.iconName)
-                    .font(.subheadline)
-                    .foregroundStyle(statusColor)
-                    .frame(width: 18, alignment: .top)
-                    .padding(.top, 1)
+                leadingIndicator
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
@@ -150,21 +114,10 @@ struct BuildRow: View {
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(build.relativeTime)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-
-                    Text(build.buildStatus.displayName)
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(statusColor)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(statusColor.opacity(0.12))
-                        .cornerRadius(999)
-                }
-                .frame(width: 62, alignment: .trailing)
+                Text(build.relativeTime)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 62, alignment: .trailing)
 
                 actionButtons
             }
@@ -204,19 +157,32 @@ struct BuildRow: View {
         }
     }
 
+    @ViewBuilder
+    private var leadingIndicator: some View {
+        if build.buildStatus.isRunning {
+            ProgressView()
+                .controlSize(.small)
+                .tint(.orange)
+                .frame(width: 18, height: 18, alignment: .top)
+                .padding(.top, 1)
+        } else {
+            Image(systemName: build.buildStatus.iconName)
+                .font(.subheadline)
+                .foregroundStyle(statusColor)
+                .frame(width: 18, alignment: .top)
+                .padding(.top, 1)
+        }
+    }
+
     private var actionButtons: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             if build.buildStatus.isFailure {
                 Button {
                     showRetryConfirmation = true
                 } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.caption2)
-                        .frame(width: 24, height: 24)
+                    actionLabel("Retry")
                 }
                 .buttonStyle(.plain)
-                .background(Color(nsColor: .windowBackgroundColor))
-                .clipShape(Circle())
                 .help("Retry build")
             }
 
@@ -224,19 +190,26 @@ struct BuildRow: View {
                 Button {
                     showCancelConfirmation = true
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption2)
-                        .frame(width: 24, height: 24)
+                    actionLabel("Cancel")
                 }
                 .buttonStyle(.plain)
-                .background(Color(nsColor: .windowBackgroundColor))
-                .clipShape(Circle())
                 .help("Cancel build")
             }
         }
-        .frame(width: 48, alignment: .trailing)
+        .frame(width: 72, alignment: .trailing)
         .opacity(isHovered && hasActions ? 1 : 0)
         .allowsHitTesting(isHovered && hasActions)
+    }
+
+    private func actionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(Capsule(style: .continuous))
     }
 
     private var hasActions: Bool {

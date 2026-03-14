@@ -50,12 +50,36 @@ struct MenuBarLabel: View {
     @Bindable var appState: AppState
 
     var body: some View {
-        Image(systemName: appState.overallStatus.menuBarIcon)
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(appState.overallStatus.color)
-            .symbolRenderingMode(.hierarchical)
-            .frame(width: 16, height: 14)
-            .accessibilityLabel(appState.overallStatus.title)
+        Group {
+            if appState.hasActiveBuildActivity {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 16, height: 14)
+            } else {
+                MenuBarIdleGlyph()
+                    .frame(width: 16, height: 14)
+            }
+        }
+        .accessibilityLabel(appState.hasActiveBuildActivity ? "Builds running" : "Idle")
+    }
+}
+
+struct MenuBarIdleGlyph: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Capsule(style: .continuous)
+                .fill(Color.primary)
+                .frame(width: 12, height: 2.4)
+
+            Capsule(style: .continuous)
+                .fill(Color.primary.opacity(0.92))
+                .frame(width: 9, height: 2.4)
+
+            Capsule(style: .continuous)
+                .fill(Color.primary.opacity(0.82))
+                .frame(width: 11, height: 2.4)
+        }
+        .frame(width: 14, height: 12, alignment: .center)
     }
 }
 

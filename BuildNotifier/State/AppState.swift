@@ -116,6 +116,22 @@ final class AppState {
         if hasSuccess { return .passing }
         return .unknown
     }
+
+    var hasActiveBuildActivity: Bool {
+        for (_, builds) in buildsByProject {
+            if builds.contains(where: { $0.buildStatus.isRunning }) {
+                return true
+            }
+        }
+
+        for (_, deployments) in deploymentsByProject {
+            if deployments.contains(where: { $0.deploymentStatus.isRunning }) {
+                return true
+            }
+        }
+
+        return false
+    }
     
     var groupedBuilds: [(project: WatchedProject, builds: [String: [Build]])] {
         var result: [(project: WatchedProject, builds: [String: [Build]])] = []
