@@ -50,6 +50,8 @@ A native macOS menubar app that monitors your CircleCI builds and sends notifica
 3. Drag "CircleCI Notifier" to Applications
 4. Launch from Applications folder
 
+> **Gatekeeper Note:** This project is currently distributed as an ad-hoc signed, non-notarized app. Without an Apple Developer account, the DMG cannot be Developer ID signed or notarized. Teammates may need to open the app once, then go to **System Settings > Privacy & Security** and click **Open Anyway**.
+
 ### Option 2: Build from Source
 
 ```bash
@@ -66,6 +68,18 @@ cd build-notifier
 # Install to Applications
 cp -r "CircleCI Notifier.app" /Applications/
 ```
+
+By default, `./build-app.sh` uses ad-hoc signing. If teammates want to build and sign locally with a signing identity already present in their keychain, they can run:
+
+```bash
+# List available code signing identities
+security find-identity -v -p codesigning
+
+# Build using a local signing identity
+SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" ./build-app.sh
+```
+
+This is mainly useful when each teammate builds on their own Mac. It does not replace Developer ID notarization for redistributing one shared DMG to everyone else.
 
 ### Option 3: Development Build
 
@@ -268,6 +282,8 @@ swift build && .build/debug/BuildNotifier
 | Issue | Solution |
 |-------|----------|
 | App doesn't appear in menubar | Check if already running (Activity Monitor) |
+| macOS says the app is from an unidentified developer | Open it once, then go to System Settings > Privacy & Security and click Open Anyway |
+| Local build should use my own signing identity | Run `security find-identity -v -p codesigning`, then build with `SIGN_IDENTITY="..." ./build-app.sh` |
 | "Invalid API token" | Regenerate token at circleci.com/account/api |
 | No notifications | Enable in System Settings > Notifications |
 | Builds not updating | Check polling interval in Settings |

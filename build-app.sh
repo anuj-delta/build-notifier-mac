@@ -6,6 +6,8 @@ set -e
 APP_NAME="CircleCI Notifier"
 BUNDLE_ID="com.buildnotifier.circleci"
 VERSION="1.0.0"
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+ENTITLEMENTS_FILE="entitlements.plist"
 
 echo "Building BuildNotifier..."
 swift build -c release
@@ -66,9 +68,21 @@ EOF
 # Create PkgInfo
 echo -n "APPL????" > "$CONTENTS_DIR/PkgInfo"
 
-# Sign the app (ad-hoc) to enable notifications
+# Sign the app. Defaults to ad-hoc signing, but callers can provide a local
+# signing identity, for example:
+#   SIGN_IDENTITY="Apple Development: Name (TEAMID)" ./build-app.sh
 echo "Signing app bundle..."
-codesign --force --deep --sign - "$APP_DIR"
+if [ -f "$ENTITLEMENTS_FILE" ]; then
+    codesign --force --deep --entitlements "$ENTITLEMENTS_FILE" --sign "$SIGN_IDENTITY" "$APP_DIR"
+else
+    codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DIR"
+fi
+
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    echo "Signed with ad-hoc identity."
+else
+    echo "Signed with identity: $SIGN_IDENTITY"
+fi
 
 echo "Done! App bundle created at: $APP_DIR"
 echo ""
