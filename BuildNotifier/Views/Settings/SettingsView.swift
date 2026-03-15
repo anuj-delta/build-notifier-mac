@@ -84,7 +84,7 @@ struct SettingsView: View {
                 AppBrandIcon(size: 34)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Delta Build Notifer")
+                    Text("Build Notifier")
                         .font(.headline)
                     Text("CircleCI + Vercel")
                         .font(.caption)
@@ -351,18 +351,20 @@ struct SettingsView: View {
 
                     Divider()
 
-                    Button("Add CircleCI Projects...") {
-                        appState.showingSettings = false
-                        dismiss()
-                        appState.currentScreen = .projectSelection
-                        appState.stopPolling()
-                        Task {
-                            await appState.loadProjects()
-                            openWindow(id: "onboarding")
-                            NSApplication.shared.activate(ignoringOtherApps: true)
+                    HStack(spacing: 10) {
+                        Button("Choose CircleCI Projects...") {
+                            presentCircleCIProjectSelection(refreshProjects: false)
                         }
+                        .buttonStyle(.link)
+
+                        Button {
+                            presentCircleCIProjectSelection(refreshProjects: true)
+                        } label: {
+                            Label("Refresh Followed Projects", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
-                    .buttonStyle(.link)
                 }
 
                 SettingsCard("Actions", systemImage: "key") {
@@ -517,7 +519,7 @@ struct SettingsView: View {
             }
 
             SettingsCard("Actions", systemImage: "power") {
-                Button("Quit Delta Build Notifer") {
+                Button("Quit Build Notifier") {
                     NSApplication.shared.terminate(nil)
                 }
                 .buttonStyle(.bordered)
@@ -528,6 +530,21 @@ struct SettingsView: View {
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    }
+
+    private func presentCircleCIProjectSelection(refreshProjects: Bool) {
+        appState.showingSettings = false
+        dismiss()
+        appState.currentScreen = .projectSelection
+        appState.stopPolling()
+
+        Task {
+            if refreshProjects || appState.projects.isEmpty {
+                await appState.loadProjects()
+            }
+            openWindow(id: "onboarding")
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
     }
 }
 
@@ -566,7 +583,7 @@ struct SettingsHeroCard: View {
             AppBrandIcon(size: 58)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Delta Build Notifer")
+                Text("Build Notifier")
                     .font(.title3)
                     .fontWeight(.semibold)
 
@@ -671,7 +688,7 @@ struct AttributionCard: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
 
-                Text("Thanks for using Delta Build Notifer.")
+                Text("Thanks for using Build Notifier.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

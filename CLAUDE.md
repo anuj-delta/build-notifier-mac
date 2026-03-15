@@ -22,7 +22,7 @@ swift run
 
 # Clean
 swift package clean
-rm -rf "Delta Build Notifer.app" *.dmg
+rm -rf "Build Notifier.app" *.dmg
 ```
 
 ## Debugging

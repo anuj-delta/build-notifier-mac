@@ -3,7 +3,7 @@
 
 set -e
 
-APP_NAME="Delta Build Notifer"
+APP_NAME="Build Notifier"
 BUNDLE_ID="com.buildnotifier.circleci"
 VERSION="1.0.0"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
@@ -15,7 +15,7 @@ ICON_GENERATOR="scripts/generate-app-icon.swift"
 echo "Building BuildNotifier..."
 swift build -c release
 
-if [ -f "$ICON_GENERATOR" ]; then
+if [ "${REGENERATE_APP_ICON:-0}" = "1" ] && [ -f "$ICON_GENERATOR" ]; then
     echo "Creating icon source set..."
     swift "$ICON_GENERATOR"
 fi

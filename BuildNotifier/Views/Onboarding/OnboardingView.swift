@@ -12,7 +12,7 @@ struct OnboardingView: View {
             VStack(spacing: 10) {
                 AppBrandIcon(size: 70)
 
-                Text("Delta Build Notifer")
+                Text("Build Notifier")
                     .font(.title)
                     .fontWeight(.bold)
 

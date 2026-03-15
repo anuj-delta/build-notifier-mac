@@ -1,6 +1,6 @@
-# Delta Build Notifer
+# Build Notifier
 
-Delta Build Notifer is a native macOS menu bar app for tracking CircleCI builds and Vercel deployments without keeping dashboards open.
+Build Notifier is a native macOS menu bar app for tracking CircleCI builds and Vercel deployments without keeping dashboards open.
 
 ## What It Does
 
@@ -20,14 +20,6 @@ Delta Build Notifer is a native macOS menu bar app for tracking CircleCI builds 
 
 ![Notification Center alerts](assets/notification-center.png)
 
-### CircleCI Settings
-
-![CircleCI settings](assets/settings-circleci.png)
-
-### Vercel Settings
-
-![Vercel settings](assets/settings-vercel.png)
-
 ## Requirements
 
 - macOS 14+
@@ -41,7 +33,7 @@ Delta Build Notifer is a native macOS menu bar app for tracking CircleCI builds 
 1. Sign in to CircleCI.
 2. Open the personal token page: [app.circleci.com/settings/user/tokens](https://app.circleci.com/settings/user/tokens)
 3. Click `Create New Token`, give it a label, and copy the token when CircleCI shows it.
-4. Paste the token into Delta Build Notifer during onboarding or from Settings.
+4. Paste the token into Build Notifier during onboarding or from Settings.
 
 Reference: [CircleCI personal API token guide](https://circleci.com/docs/guides/permissions-authentication/personal-api-tokens/)
 
@@ -50,7 +42,7 @@ Reference: [CircleCI personal API token guide](https://circleci.com/docs/guides/
 1. Sign in to Vercel.
 2. Open the token page: [vercel.com/account/settings/tokens](https://vercel.com/account/settings/tokens)
 3. Create a new token for the account or team that owns the projects you want to watch.
-4. Copy the token and paste it into Delta Build Notifer during onboarding or from Settings.
+4. Copy the token and paste it into Build Notifier during onboarding or from Settings.
 
 Reference: [Vercel access token guide](https://vercel.com/guides/how-do-i-use-a-vercel-api-access-token)
 
@@ -59,12 +51,12 @@ Reference: [Vercel access token guide](https://vercel.com/guides/how-do-i-use-a-
 ### DMG
 
 1. Download or open the `.dmg`
-2. Drag `Delta Build Notifer.app` to `Applications`
+2. Drag `Build Notifier.app` to `Applications`
 3. Launch the app
 
 This repository currently builds an ad-hoc signed, non-notarized app. On some Macs, first launch may be blocked until the user does one of the following:
 
-1. Control-click `Delta Build Notifer.app`, choose `Open`, then confirm `Open`
+1. Control-click `Build Notifier.app`, choose `Open`, then confirm `Open`
 2. Or try to launch it once, then go to `System Settings > Privacy & Security` and click `Open Anyway`
 
 ### Sharing a DMG Built on This Machine
@@ -80,8 +72,8 @@ What matters is how the app is signed:
 To share it:
 
 1. Build the DMG with `./build-dmg.sh`
-2. Send the generated `Delta-Build-Notifer-1.0.0.dmg` file to the other person
-3. They open the DMG and drag `Delta Build Notifer.app` to `Applications`
+2. Send the generated `Build-Notifier-1.0.0.dmg` file to the other person
+3. They open the DMG and drag `Build Notifier.app` to `Applications`
 4. If macOS blocks first launch, they use `Open` from the context menu or `System Settings > Privacy & Security > Open Anyway`
 
 If you want a smoother install experience for anyone outside your team, sign the app with a Developer ID certificate and notarize it before distribution.
@@ -92,7 +84,7 @@ If you want a smoother install experience for anyone outside your team, sign the
 git clone <repo-url>
 cd build-notifier
 ./build-app.sh
-open "Delta Build Notifer.app"
+open "Build Notifier.app"
 ```
 
 To build with a local signing identity already installed in Keychain:
