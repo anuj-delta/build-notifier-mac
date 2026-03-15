@@ -39,6 +39,18 @@ struct ProjectSelectorView: View {
 
                 Spacer()
 
+                Button {
+                    Task {
+                        await refreshProjects()
+                    }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(appState.isLoading)
+
                 Link("Follow more", destination: URL(string: "https://app.circleci.com/projects/")!)
                     .font(.caption)
             }
@@ -169,6 +181,24 @@ struct ProjectSelectorView: View {
 
         appState.currentScreen = .main
         appState.startPolling()
+    }
+
+    private func refreshProjects() async {
+        let preservedSelections = selectedProjects
+        let preservedModes = projectFollowModes
+
+        await appState.loadProjects()
+
+        let validProjectIds = Set(appState.projects.map(\.id))
+        selectedProjects = preservedSelections.intersection(validProjectIds)
+        projectFollowModes = preservedModes.filter { validProjectIds.contains($0.key) }
+
+        for watched in appState.preferences.watchedProjects {
+            if let project = appState.projects.first(where: { $0.slug == watched.slug }) {
+                selectedProjects.insert(project.id)
+                projectFollowModes[project.id] = projectFollowModes[project.id] ?? watched.followMode
+            }
+        }
     }
 }
 

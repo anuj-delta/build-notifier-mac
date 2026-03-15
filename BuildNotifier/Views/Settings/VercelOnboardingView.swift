@@ -151,12 +151,17 @@ struct VercelOnboardingView: View {
                 SecureField("Enter your Vercel token", text: $token)
                     .textFieldStyle(.roundedBorder)
 
-                Button(action: { openTokenPage() }) {
-                    Label("Get a token from Vercel", systemImage: "arrow.up.right.square")
-                        .font(.caption)
-                        .foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 8) {
+                    IntegrationHelpLinkRow(
+                        title: "Open Vercel token page",
+                        destination: IntegrationHelpLinks.vercelTokenPage
+                    )
+
+                    IntegrationHelpLinkRow(
+                        title: "View Vercel token setup guide",
+                        destination: IntegrationHelpLinks.vercelDocs
+                    )
                 }
-                .buttonStyle(.plain)
             }
             .padding(14)
             .background(Color(nsColor: .controlBackgroundColor))
@@ -328,13 +333,6 @@ struct VercelOnboardingView: View {
             selectedProjects.insert(project.id)
         }
     }
-
-    private func openTokenPage() {
-        if let url = URL(string: "https://vercel.com/account/tokens") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
     private func stepIndicator(for target: OnboardingStep, label: String) -> some View {
         let isActive = step == target
         let isCompleted = stepOrder(target) < stepOrder(step)

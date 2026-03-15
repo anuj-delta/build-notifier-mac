@@ -190,7 +190,7 @@ final class NotificationManager: NSObject, ObservableObject {
             
             let content = UNMutableNotificationContent()
             content.title = "Test Notification"
-            content.subtitle = "Delta Build Notifer"
+            content.subtitle = "Build Notifier"
             content.body = "Notifications are working correctly!"
             content.sound = .default
             content.userInfo = ["type": "test"]

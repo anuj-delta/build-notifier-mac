@@ -3,8 +3,8 @@
 
 set -e
 
-APP_NAME="Delta Build Notifer"
-DMG_NAME="Delta-Build-Notifer"
+APP_NAME="Build Notifier"
+DMG_NAME="Build-Notifier"
 VERSION="1.0.0"
 
 # First build the app

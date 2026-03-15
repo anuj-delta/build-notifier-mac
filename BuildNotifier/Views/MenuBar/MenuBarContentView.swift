@@ -113,7 +113,7 @@ struct MenuBarContentView: View {
             HStack(spacing: 12) {
                 AppBrandIcon(size: 30)
 
-                Text("Delta Build Notifer")
+                Text("Build Notifier")
                     .font(.headline)
 
                 Spacer(minLength: 0)
