@@ -14,11 +14,7 @@ Build Notifier is a native macOS menu bar app for tracking CircleCI builds and V
 
 ### Menu Bar Overview
 
-![Menu bar overview](assets/menu-bar-overview.png)
-
-### macOS Notifications
-
-![Notification Center alerts](assets/notification-center.png)
+<img src="assets/menu-bar-overview.png" alt="Menu bar overview" width="50%" />
 
 ## Requirements
 
