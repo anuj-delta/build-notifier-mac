@@ -315,6 +315,17 @@ struct SettingsView: View {
                     )
                 }
 
+                SettingsCard("Quick Links", systemImage: "link") {
+                    IntegrationHelpLinkRow(
+                        title: "Open CircleCI token page",
+                        destination: IntegrationHelpLinks.circleCITokenPage
+                    )
+                    IntegrationHelpLinkRow(
+                        title: "View CircleCI token setup guide",
+                        destination: IntegrationHelpLinks.circleCIDocs
+                    )
+                }
+
                 SettingsCard("Watched Projects", systemImage: "arrow.triangle.branch") {
                     if appState.preferences.watchedProjects.isEmpty {
                         Text("No CircleCI projects are being watched yet.")
@@ -374,17 +385,30 @@ struct SettingsView: View {
                 }
             }
         } else {
-            SettingsEmptyStateCard(
-                title: "CircleCI is not connected",
-                message: "Connect your CircleCI token to watch builds and approval jobs.",
-                buttonTitle: "Open CircleCI Setup",
-                action: {
-                    appState.currentScreen = .onboarding
-                    dismiss()
-                    openWindow(id: "onboarding")
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+            VStack(alignment: .leading, spacing: 20) {
+                SettingsEmptyStateCard(
+                    title: "CircleCI is not connected",
+                    message: "Connect your CircleCI token to watch builds and approval jobs.",
+                    buttonTitle: "Open CircleCI Setup",
+                    action: {
+                        appState.currentScreen = .onboarding
+                        dismiss()
+                        openWindow(id: "onboarding")
+                        NSApplication.shared.activate(ignoringOtherApps: true)
+                    }
+                )
+
+                SettingsCard("Quick Links", systemImage: "link") {
+                    IntegrationHelpLinkRow(
+                        title: "Open CircleCI token page",
+                        destination: IntegrationHelpLinks.circleCITokenPage
+                    )
+                    IntegrationHelpLinkRow(
+                        title: "View CircleCI token setup guide",
+                        destination: IntegrationHelpLinks.circleCIDocs
+                    )
                 }
-            )
+            }
         }
     }
 
@@ -405,6 +429,17 @@ struct SettingsView: View {
                     if let teamId = appState.preferences.selectedVercelTeamId, !teamId.isEmpty {
                         SettingsAccountField(label: "Team scope", value: teamId)
                     }
+                }
+
+                SettingsCard("Quick Links", systemImage: "link") {
+                    IntegrationHelpLinkRow(
+                        title: "Open Vercel token page",
+                        destination: IntegrationHelpLinks.vercelTokenPage
+                    )
+                    IntegrationHelpLinkRow(
+                        title: "View Vercel token setup guide",
+                        destination: IntegrationHelpLinks.vercelDocs
+                    )
                 }
 
                 SettingsCard("Watched Projects", systemImage: "triangle.fill") {
@@ -447,14 +482,27 @@ struct SettingsView: View {
                 }
             }
         } else {
-            SettingsEmptyStateCard(
-                title: "Vercel is not connected",
-                message: "Connect your Vercel account to watch preview and deployment status.",
-                buttonTitle: "Connect Vercel",
-                action: {
-                    showingVercelOnboarding = true
+            VStack(alignment: .leading, spacing: 20) {
+                SettingsEmptyStateCard(
+                    title: "Vercel is not connected",
+                    message: "Connect your Vercel account to watch preview and deployment status.",
+                    buttonTitle: "Connect Vercel",
+                    action: {
+                        showingVercelOnboarding = true
+                    }
+                )
+
+                SettingsCard("Quick Links", systemImage: "link") {
+                    IntegrationHelpLinkRow(
+                        title: "Open Vercel token page",
+                        destination: IntegrationHelpLinks.vercelTokenPage
+                    )
+                    IntegrationHelpLinkRow(
+                        title: "View Vercel token setup guide",
+                        destination: IntegrationHelpLinks.vercelDocs
+                    )
                 }
-            )
+            }
         }
     }
 

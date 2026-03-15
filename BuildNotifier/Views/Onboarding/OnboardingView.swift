@@ -40,14 +40,17 @@ struct OnboardingView: View {
                 SecureField("Personal API Token", text: $apiToken)
                     .textFieldStyle(.roundedBorder)
 
-                Button {
-                    openTokenPage()
-                } label: {
-                    Label("Get a token from circleci.com/account/api", systemImage: "arrow.up.right.square")
-                        .font(.caption)
-                        .foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 8) {
+                    IntegrationHelpLinkRow(
+                        title: "Open CircleCI token page",
+                        destination: IntegrationHelpLinks.circleCITokenPage
+                    )
+
+                    IntegrationHelpLinkRow(
+                        title: "View CircleCI token setup guide",
+                        destination: IntegrationHelpLinks.circleCIDocs
+                    )
                 }
-                .buttonStyle(.plain)
             }
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -102,12 +105,6 @@ struct OnboardingView: View {
         }
         .padding(32)
         .frame(width: 430, height: 520)
-    }
-
-    private func openTokenPage() {
-        if let url = URL(string: "https://circleci.com/account/api") {
-            NSWorkspace.shared.open(url)
-        }
     }
 
     private func validateToken() async {
