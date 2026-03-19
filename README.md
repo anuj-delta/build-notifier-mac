@@ -68,7 +68,7 @@ What matters is how the app is signed:
 To share it:
 
 1. Build the DMG with `./build-dmg.sh`
-2. Send the generated `Build-Notifier-1.0.0.dmg` file to the other person
+2. Send the generated `Build-Notifier-1.0.1.dmg` file to the other person
 3. They open the DMG and drag `Build Notifier.app` to `Applications`
 4. If macOS blocks first launch, they use `Open` from the context menu or `System Settings > Privacy & Security > Open Anyway`
 

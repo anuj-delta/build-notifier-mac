@@ -5,7 +5,7 @@ set -e
 
 APP_NAME="Build Notifier"
 DMG_NAME="Build-Notifier"
-VERSION="1.0.0"
+VERSION="1.0.1"
 
 # First build the app
 echo "Building app..."
