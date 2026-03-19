@@ -126,6 +126,7 @@ struct UserPreferences: Codable {
                 if let v = partial["vercelNotificationsEnabled"] as? Bool { prefs.vercelNotificationsEnabled = v }
                 if let v = partial["notifyOnDeploymentReady"] as? Bool { prefs.notifyOnDeploymentReady = v }
                 if let v = partial["notifyOnDeploymentError"] as? Bool { prefs.notifyOnDeploymentError = v }
+                if let v = partial["selectedVercelTeamId"] as? String { prefs.selectedVercelTeamId = v }
                 if let vercelData = try? JSONSerialization.data(withJSONObject: partial["watchedVercelProjects"] ?? []),
                    let vercelWatched = try? JSONDecoder().decode([WatchedVercelProject].self, from: vercelData) {
                     prefs.watchedVercelProjects = vercelWatched

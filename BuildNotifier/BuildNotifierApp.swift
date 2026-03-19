@@ -105,8 +105,10 @@ struct MenuBarExtraContent: View {
                     subtitle: "Connect CircleCI or skip into Settings to add integrations later.",
                     buttonTitle: "Open Setup",
                     action: {
-                        openWindow(id: "onboarding")
-                        NSApplication.shared.activate(ignoringOtherApps: true)
+                        AppWindowManager.dismissActiveMenuBarWindow {
+                            openWindow(id: "onboarding")
+                            NSApplication.shared.activate(ignoringOtherApps: true)
+                        }
                     }
                 )
                 
@@ -116,8 +118,10 @@ struct MenuBarExtraContent: View {
                     subtitle: "Pick the CircleCI repositories you want to watch from the menu bar.",
                     buttonTitle: "Open Project Selector",
                     action: {
-                        openWindow(id: "onboarding")
-                        NSApplication.shared.activate(ignoringOtherApps: true)
+                        AppWindowManager.dismissActiveMenuBarWindow {
+                            openWindow(id: "onboarding")
+                            NSApplication.shared.activate(ignoringOtherApps: true)
+                        }
                     }
                 )
                 

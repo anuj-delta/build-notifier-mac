@@ -84,8 +84,6 @@ struct BuildRow: View {
     let onOpen: () -> Void
 
     @State private var isHovered = false
-    @State private var showRetryConfirmation = false
-    @State private var showCancelConfirmation = false
 
     var body: some View {
         Button {
@@ -131,30 +129,6 @@ struct BuildRow: View {
         .onHover { hovering in
             isHovered = hovering
         }
-        .confirmationDialog(
-            "Retry Build #\(build.buildNum)?",
-            isPresented: $showRetryConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Retry") {
-                onRetry()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will create a new build for \(build.branch ?? "this branch").")
-        }
-        .confirmationDialog(
-            "Cancel Build #\(build.buildNum)?",
-            isPresented: $showCancelConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Cancel Build", role: .destructive) {
-                onCancel()
-            }
-            Button("Keep Running", role: .cancel) {}
-        } message: {
-            Text("This will stop the currently running build.")
-        }
     }
 
     @ViewBuilder
@@ -178,7 +152,7 @@ struct BuildRow: View {
         HStack(spacing: 6) {
             if build.buildStatus.isFailure {
                 Button {
-                    showRetryConfirmation = true
+                    onRetry()
                 } label: {
                     actionLabel("Retry")
                 }
@@ -188,7 +162,7 @@ struct BuildRow: View {
 
             if build.buildStatus.isRunning {
                 Button {
-                    showCancelConfirmation = true
+                    onCancel()
                 } label: {
                     actionLabel("Cancel")
                 }

@@ -63,6 +63,54 @@ private struct MenuBarSnapshot {
     }
 }
 
+private enum PendingMenuAction {
+    case approve(PendingApproval)
+    case retry(Build)
+    case cancel(Build)
+
+    var title: String {
+        switch self {
+        case .approve(let approval):
+            return "Approve \(approval.jobName)?"
+        case .retry(let build):
+            return "Retry Build #\(build.buildNum)?"
+        case .cancel(let build):
+            return "Cancel Build #\(build.buildNum)?"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .approve(let approval):
+            return "This will approve the workflow for \(approval.build.branch ?? "this branch")."
+        case .retry(let build):
+            return "This will create a new build for \(build.branch ?? "this branch")."
+        case .cancel:
+            return "This will stop the currently running build."
+        }
+    }
+
+    var confirmTitle: String {
+        switch self {
+        case .approve:
+            return "Approve"
+        case .retry:
+            return "Retry"
+        case .cancel:
+            return "Cancel Build"
+        }
+    }
+
+    var confirmRole: ButtonRole? {
+        switch self {
+        case .cancel:
+            return .destructive
+        case .approve, .retry:
+            return nil
+        }
+    }
+}
+
 struct MenuBarContentView: View {
     private let popoverWidth: CGFloat = 424
     private let buildsListMaxHeight: CGFloat = 1120
@@ -73,35 +121,53 @@ struct MenuBarContentView: View {
     @State private var selectedTab: MenuBarTab = .overview
     @State private var isSearchExpanded = false
     @State private var searchText = ""
+    @State private var pendingAction: PendingMenuAction?
     @FocusState private var isSearchFocused: Bool
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let snapshot = makeSnapshot()
 
-        VStack(spacing: 0) {
-            header(snapshot: snapshot)
+        ZStack {
+            VStack(spacing: 0) {
+                header(snapshot: snapshot)
 
-            if let error = appState.error {
-                ErrorBanner(
-                    message: error,
-                    onRetry: { appState.retryStartup() },
-                    onChangeToken: { appState.changeToken() }
+                if let error = appState.error {
+                    ErrorBanner(
+                        message: error,
+                        onRetry: { appState.retryStartup() },
+                        onChangeToken: { appState.changeToken() }
+                    )
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+                }
+
+                if appState.watchedProjects.isEmpty && appState.watchedVercelProjects.isEmpty {
+                    emptyState
+                } else {
+                    buildsList(snapshot: snapshot)
+                }
+
+                footer
+            }
+
+            if let pendingAction {
+                PendingActionOverlay(
+                    action: pendingAction,
+                    onConfirm: {
+                        perform(pendingAction)
+                    },
+                    onCancel: {
+                        self.pendingAction = nil
+                    }
                 )
-                .padding(.horizontal, 10)
-                .padding(.top, 10)
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                .zIndex(1)
             }
-
-            if appState.watchedProjects.isEmpty && appState.watchedVercelProjects.isEmpty {
-                emptyState
-            } else {
-                buildsList(snapshot: snapshot)
-            }
-
-            footer
         }
         .frame(width: popoverWidth)
         .background(Color(nsColor: .windowBackgroundColor))
+        .animation(.easeInOut(duration: 0.16), value: pendingAction != nil)
         .onAppear {
             selectDefaultTabIfNeeded(tabs: snapshot.availableTabs)
             appState.refreshNow()
@@ -411,7 +477,7 @@ struct MenuBarContentView: View {
             PendingApprovalsSection(
                 approvals: snapshot.filteredPendingApprovals,
                 onApprove: { approval in
-                    Task { await appState.approveJob(approval) }
+                    pendingAction = .approve(approval)
                 },
                 onOpen: { approval in
                     openBuildUrl(approval.build.workflowUrl ?? approval.build.buildUrl)
@@ -432,10 +498,10 @@ struct MenuBarContentView: View {
                     buildsByBranch: item.builds,
                     isFiltered: snapshot.hasSearchQuery,
                     onRetry: { build in
-                        Task { await appState.retryBuild(build) }
+                        pendingAction = .retry(build)
                     },
                     onCancel: { build in
-                        Task { await appState.cancelBuild(build) }
+                        pendingAction = .cancel(build)
                     },
                     onOpen: { build in
                         openBuildUrl(build.workflowUrl ?? build.buildUrl)
@@ -484,7 +550,7 @@ struct MenuBarContentView: View {
             PendingApprovalsSection(
                 approvals: snapshot.filteredPendingApprovals,
                 onApprove: { approval in
-                    Task { await appState.approveJob(approval) }
+                    pendingAction = .approve(approval)
                 },
                 onOpen: { approval in
                     openBuildUrl(approval.build.workflowUrl ?? approval.build.buildUrl)
@@ -506,10 +572,10 @@ struct MenuBarContentView: View {
                     buildsByBranch: item.builds,
                     isFiltered: snapshot.hasSearchQuery,
                     onRetry: { build in
-                        Task { await appState.retryBuild(build) }
+                        pendingAction = .retry(build)
                     },
                     onCancel: { build in
-                        Task { await appState.cancelBuild(build) }
+                        pendingAction = .cancel(build)
                     },
                     onOpen: { build in
                         openBuildUrl(build.workflowUrl ?? build.buildUrl)
@@ -602,13 +668,108 @@ struct MenuBarContentView: View {
     }
 
     private func openSettings() {
-        openWindow(id: "settings")
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        AppWindowManager.dismissActiveMenuBarWindow {
+            openWindow(id: "settings")
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
     }
 
     private func openBuildUrl(_ urlString: String?) {
         guard let urlString, let url = URL(string: urlString) else { return }
-        NSWorkspace.shared.open(url)
+        AppWindowManager.dismissActiveMenuBarWindow {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func perform(_ action: PendingMenuAction) {
+        pendingAction = nil
+
+        switch action {
+        case .approve(let approval):
+            Task { await appState.approveJob(approval) }
+        case .retry(let build):
+            Task { await appState.retryBuild(build) }
+        case .cancel(let build):
+            Task { await appState.cancelBuild(build) }
+        }
+    }
+
+    private func cancelTitle(for action: PendingMenuAction) -> String {
+        switch action {
+        case .approve:
+            return "Not Now"
+        case .retry:
+            return "Keep Current Build"
+        case .cancel:
+            return "Keep Running"
+        }
+    }
+}
+
+private struct PendingActionOverlay: View {
+    let action: PendingMenuAction
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.black.opacity(0.38))
+                .ignoresSafeArea()
+                .onTapGesture {}
+
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(action.title)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+
+                    Text(action.message)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(spacing: 12) {
+                    Button(action.confirmTitle) {
+                        onConfirm()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(action.confirmRole == .destructive ? .red : .accentColor)
+                    .frame(maxWidth: .infinity)
+
+                    Button(cancelTitle(for: action)) {
+                        onCancel()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(24)
+            .frame(width: 320)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color(nsColor: .windowBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.28), radius: 26, y: 12)
+        }
+    }
+
+    private func cancelTitle(for action: PendingMenuAction) -> String {
+        switch action {
+        case .approve:
+            return "Not Now"
+        case .retry:
+            return "Keep Current Build"
+        case .cancel:
+            return "Keep Running"
+        }
     }
 }
 

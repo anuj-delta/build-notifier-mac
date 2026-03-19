@@ -775,6 +775,20 @@ struct WatchedVercelProjectRow: View {
 
             Spacer()
 
+            Picker("", selection: Binding(
+                get: { project.followMode },
+                set: {
+                    var updated = project
+                    updated.followMode = $0
+                    onUpdate(updated)
+                }
+            )) {
+                ForEach(FollowMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .frame(width: 130)
+
             Button {
                 onRemove()
             } label: {

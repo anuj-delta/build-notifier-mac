@@ -10,6 +10,7 @@
 - Build scripts: `build-app.sh` (app bundle) and `build-dmg.sh` (DMG).
 
 ## Build, Test, and Development Commands
+- Before making changes, run `git status --short --branch` and sync the current branch if it is behind its remote tracking branch.
 - `swift build` builds a debug binary in `.build/debug/`.
 - `swift build -c release` builds a release binary in `.build/release/`.
 - `swift run` runs the debug build.

@@ -383,7 +383,7 @@ final class AppState {
         preferences.save()
         // Restart polling with new interval
         if poller.isPolling || vercelPoller.isPolling {
-            startPolling()
+            startAllPolling()
         }
     }
     
@@ -434,9 +434,12 @@ final class AppState {
         }
     }
     
-    func addVercelToWatchlist(_ project: VercelProject, teamId: String?) {
-        let watchedProject = WatchedVercelProject(from: project, teamId: teamId)
-        if !preferences.watchedVercelProjects.contains(where: { $0.id == watchedProject.id }) {
+    func addVercelToWatchlist(_ project: VercelProject, teamId: String?, followMode: FollowMode = .all) {
+        let watchedProject = WatchedVercelProject(from: project, teamId: teamId, followMode: followMode)
+        if let index = preferences.watchedVercelProjects.firstIndex(where: { $0.id == watchedProject.id }) {
+            preferences.watchedVercelProjects[index] = watchedProject
+            preferences.save()
+        } else {
             preferences.watchedVercelProjects.append(watchedProject)
             preferences.save()
         }

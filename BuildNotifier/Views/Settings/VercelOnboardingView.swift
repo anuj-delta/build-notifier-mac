@@ -10,6 +10,7 @@ struct VercelOnboardingView: View {
     @State private var useManualTeamId = false
     @State private var step: OnboardingStep = .token
     @State private var selectedProjects: Set<String> = []
+    @State private var projectFollowModes: [String: FollowMode] = [:]
 
     enum OnboardingStep {
         case token
@@ -233,13 +234,17 @@ struct VercelOnboardingView: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(appState.vercelProjects) { project in
-                        selectionCard(
-                            title: project.name,
-                            subtitle: project.framework,
-                            isSelected: selectedProjects.contains(project.id)
-                        ) {
-                            toggleProject(project)
-                        }
+                        VercelProjectSelectionRow(
+                            project: project,
+                            isSelected: selectedProjects.contains(project.id),
+                            followMode: Binding(
+                                get: { projectFollowModes[project.id] ?? .all },
+                                set: { projectFollowModes[project.id] = $0 }
+                            ),
+                            onToggle: {
+                                toggleProject(project)
+                            }
+                        )
                     }
                 }
             }
@@ -313,12 +318,14 @@ struct VercelOnboardingView: View {
             appState.preferences.save()
             Task {
                 await appState.loadVercelProjects(teamId: effectiveTeamId)
+                initializeProjectSelection()
                 step = .projectSelection
             }
         case .projectSelection:
             for projectId in selectedProjects {
                 if let project = appState.vercelProjects.first(where: { $0.id == projectId }) {
-                    appState.addVercelToWatchlist(project, teamId: effectiveTeamId)
+                    let followMode = projectFollowModes[project.id] ?? .all
+                    appState.addVercelToWatchlist(project, teamId: effectiveTeamId, followMode: followMode)
                 }
             }
             appState.startVercelPolling()
@@ -331,6 +338,15 @@ struct VercelOnboardingView: View {
             selectedProjects.remove(project.id)
         } else {
             selectedProjects.insert(project.id)
+        }
+    }
+
+    private func initializeProjectSelection() {
+        let existing = appState.preferences.watchedVercelProjects
+        selectedProjects = Set(existing.map(\.id))
+
+        for project in existing {
+            projectFollowModes[project.id] = project.followMode
         }
     }
     private func stepIndicator(for target: OnboardingStep, label: String) -> some View {
@@ -392,5 +408,55 @@ struct VercelOnboardingView: View {
             .cornerRadius(12)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct VercelProjectSelectionRow: View {
+    let project: VercelProject
+    let isSelected: Bool
+    @Binding var followMode: FollowMode
+    let onToggle: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onToggle) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(project.name)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+
+                if let framework = project.framework, !framework.isEmpty {
+                    Text(framework)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            if isSelected {
+                Picker("", selection: $followMode) {
+                    ForEach(FollowMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 130)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isSelected ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.primary.opacity(0.05), lineWidth: 1)
+        )
+        .cornerRadius(12)
     }
 }

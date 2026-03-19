@@ -64,6 +64,7 @@ final class VercelPoller: ObservableObject {
         error = nil
         
         let previousDeployments = appState.deploymentsByProject
+        let currentVercelUser = appState.vercelUser
         
         var newDeploymentsByProject: [String: [VercelDeployment]] = [:]
         
@@ -76,7 +77,15 @@ final class VercelPoller: ObservableObject {
                             teamId: project.teamId,
                             limit: 20
                         )
-                        return (project.id, deployments)
+                        let filteredDeployments: [VercelDeployment]
+                        if project.followMode == .mine {
+                            filteredDeployments = deployments.filter { deployment in
+                                deployment.belongsToCurrentUser(currentVercelUser)
+                            }
+                        } else {
+                            filteredDeployments = deployments
+                        }
+                        return (project.id, filteredDeployments)
                     } catch {
                         return nil
                     }
@@ -162,5 +171,37 @@ final class VercelPoller: ObservableObject {
         }
 
         appState.notifiedVercelDeployments = baselineKeys
+    }
+}
+
+private extension VercelDeployment {
+    func belongsToCurrentUser(_ user: VercelUserInfo?) -> Bool {
+        guard let user else { return false }
+
+        let userIdentifiers = Set(
+            [user.id, user.email, user.name, user.username]
+                .compactMap(Self.normalizedIdentifier)
+        )
+
+        guard !userIdentifiers.isEmpty else { return false }
+
+        let deploymentIdentifiers = Set(
+            [
+                creator?.uid,
+                creator?.email,
+                creator?.username,
+                meta?.authorName,
+                meta?.authorLogin
+            ]
+            .compactMap(Self.normalizedIdentifier)
+        )
+
+        return !deploymentIdentifiers.isDisjoint(with: userIdentifiers)
+    }
+
+    static func normalizedIdentifier(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty ? nil : normalized
     }
 }
