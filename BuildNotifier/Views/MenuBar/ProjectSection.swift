@@ -21,30 +21,27 @@ struct ProjectSection: View {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 10) {
+                HStack(alignment: .center, spacing: 10) {
+                    RepositoryPathLabel(
+                        organization: project.orgName,
+                        repository: project.repoName,
+                        repositoryFont: .system(size: 14, weight: .semibold),
+                        organizationFont: .system(size: 14, weight: .medium),
+                        repositoryColor: AppChrome.text,
+                        organizationColor: AppChrome.textMuted,
+                        truncationMode: .middle
+                    )
+
+                    Spacer()
+
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(AppChrome.textMuted)
-                        .frame(width: 12)
-
-                    ProviderMark(style: .circleCI, color: AppChrome.accent, size: 12)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(project.displayName)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(AppChrome.text)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-
-                        Text(branchCountLabel)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(AppChrome.textMuted)
-                    }
-
-                    Spacer()
+                        .frame(width: 12, height: 12)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .padding(.leading, 0)
+                .padding(.trailing, 12)
+                .padding(.vertical, 9)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -73,7 +70,6 @@ struct ProjectSection: View {
 
                             if index < sortedBranches.count - 1 {
                                 Divider()
-                                    .padding(.leading, 40)
                             }
                         }
                     }
@@ -94,17 +90,12 @@ struct ProjectSection: View {
             return date1 > date2
         }
     }
-
-    private var branchCountLabel: String {
-        if isFiltered {
-            return "\(sortedBranches.count) matching branches"
-        }
-        return "\(sortedBranches.count) tracked branches"
-    }
 }
 
 struct BuildRow: View {
     private let branchLabelMaxWidth: CGFloat = 188
+    private let trailingColumnWidth: CGFloat = 62
+    private let trailingActionRowHeight: CGFloat = 14
 
     let build: Build
     let canAutoApprove: Bool
@@ -122,11 +113,11 @@ struct BuildRow: View {
             onOpen()
         } label: {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
                     leadingIndicator
                         .padding(.top, 2)
 
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 4) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text(build.branch ?? "unknown")
                                 .font(.system(size: 13, weight: .semibold))
@@ -154,19 +145,27 @@ struct BuildRow: View {
                             .foregroundStyle(AppChrome.textMuted)
                             .lineLimit(1)
                             .truncationMode(.tail)
-
-                        actionSlot
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Text(build.relativeTime)
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(AppChrome.textMuted)
-                        .frame(width: 62, alignment: .trailing)
-                        .monospacedDigit()
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Text(build.relativeTime)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(AppChrome.textMuted)
+                            .monospacedDigit()
+
+                        if hasActions {
+                            trailingActions
+                                .frame(height: trailingActionRowHeight)
+                                .opacity(isHovered || isAutoApproveArmed ? 1 : 0)
+                                .allowsHitTesting(isHovered || isAutoApproveArmed)
+                        }
+                    }
+                    .frame(width: trailingColumnWidth, alignment: .trailing)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .padding(.leading, 0)
+                .padding(.trailing, 12)
+                .padding(.vertical, 9)
             }
             .background(rowBackground)
             .contentShape(Rectangle())
@@ -192,14 +191,23 @@ struct BuildRow: View {
         }
     }
 
-    private var actionSlot: some View {
-        HStack(spacing: 12) {
+    private var trailingActions: some View {
+        HStack(spacing: 8) {
             if build.buildStatus.isFailure {
-                actionButton("Retry", action: onRetry)
+                actionIconButton(
+                    systemName: "arrow.clockwise",
+                    title: "Retry"
+                ) {
+                    onRetry()
+                }
             }
 
             if canAutoApprove || isAutoApproveArmed {
-                actionButton(isAutoApproveArmed ? "Cancel Auto" : "Auto-Approve") {
+                actionIconButton(
+                    systemName: isAutoApproveArmed ? "checkmark.circle.fill" : "checkmark.circle",
+                    title: isAutoApproveArmed ? "Cancel Auto-Approve" : "Auto-Approve",
+                    tint: isAutoApproveArmed ? AppChrome.accent : AppChrome.textMuted
+                ) {
                     if isAutoApproveArmed {
                         onCancelAutoApprove()
                     } else {
@@ -209,26 +217,45 @@ struct BuildRow: View {
             }
 
             if build.buildStatus.isRunning {
-                actionButton("Cancel", action: onCancel)
+                actionIconButton(
+                    systemName: "xmark.circle",
+                    title: "Cancel",
+                    tint: AppChrome.textMuted
+                ) {
+                    onCancel()
+                }
             }
         }
-        .frame(height: hasActions ? 16 : 0, alignment: .leading)
-        .opacity(hasActions && (isHovered || isAutoApproveArmed) ? 1 : 0)
-        .allowsHitTesting(hasActions && (isHovered || isAutoApproveArmed))
     }
 
-    private func actionButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(title) {
+    private func actionIconButton(
+        systemName: String,
+        title: String,
+        tint: Color = AppChrome.textMuted,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
             action()
+        } label: {
+            Image(systemName: systemName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 14, height: 14)
         }
         .buttonStyle(.plain)
-        .font(.system(size: 11, weight: .medium))
-        .foregroundStyle(AppChrome.textMuted)
         .help(title)
     }
 
     private var rowBackground: some View {
-        (isAutoApproveArmed ? AppChrome.accentSoft : (isHovered ? AppChrome.hover : Color.clear))
+        UnevenRoundedRectangle(
+            topLeadingRadius: 0,
+            bottomLeadingRadius: 0,
+            bottomTrailingRadius: AppChrome.radiusMedium,
+            topTrailingRadius: AppChrome.radiusMedium,
+            style: .continuous
+        )
+        .fill(isAutoApproveArmed ? AppChrome.accentSoft : Color.clear)
+        .padding(.vertical, 2)
     }
 
     private var hasActions: Bool {

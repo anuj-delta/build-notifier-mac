@@ -377,7 +377,7 @@ final class AppState {
     }
 
     func recordWorkflowApprovalSupport(workflowId: String, jobs: [WorkflowJob]) {
-        workflowApprovalSupport[workflowId] = jobs.contains(where: \.isApprovalJob)
+        workflowApprovalSupport[workflowId] = jobs.contains(where: \.canStillRequireApproval)
     }
 
     func mergeWorkflowApprovalSupport(_ supportByWorkflowId: [String: Bool]) {

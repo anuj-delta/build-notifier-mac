@@ -15,7 +15,7 @@ final class AutoApprovalPollerTests: XCTestCase {
         )
         let appState = AppState(autoApprovalPoller: poller)
         let build = makeBuild()
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
 
         appState.armAutoApprove(for: build)
         appState.armAutoApprove(for: build)
@@ -30,8 +30,8 @@ final class AutoApprovalPollerTests: XCTestCase {
             approvePendingJob: { _, _ in }
         )
         let appState = AppState(autoApprovalPoller: poller)
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval")])
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-2", jobs: [makeWorkflowJob(type: "approval")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-2", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
 
         appState.armAutoApprove(for: makeBuild(workflowId: "workflow-1", buildNum: 1))
         appState.armAutoApprove(for: makeBuild(workflowId: "workflow-2", buildNum: 2))
@@ -48,7 +48,7 @@ final class AutoApprovalPollerTests: XCTestCase {
             approvePendingJob: { _, _ in }
         )
         let appState = AppState(autoApprovalPoller: poller)
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
 
         appState.armAutoApprove(for: makeBuild())
         appState.preferences.notificationsEnabled = false
@@ -93,7 +93,7 @@ final class AutoApprovalPollerTests: XCTestCase {
             }
         )
         let appState = AppState(autoApprovalPoller: poller)
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
 
         appState.armAutoApprove(for: makeBuild())
         await poller.checkNow()
@@ -108,28 +108,28 @@ final class AutoApprovalPollerTests: XCTestCase {
         XCTAssertTrue(appState.armedAutoApprovals.isEmpty)
     }
 
-    func testResolvedWorkflowClearsArmedApprovalWithoutApproving() async {
+    func testWorkflowClearsArmedApprovalAfterApprovalHasAlreadyBeenConsumed() async {
         var approvedRequests = 0
 
         let poller = AutoApprovalPoller(
             fetchWorkflowJobs: { _ in
                 [
                     WorkflowJob(
-                        id: "job-1",
-                        name: "Build",
+                        id: "approval-job",
+                        name: "Deploy approval",
                         projectSlug: "gh/org/repo",
                         status: "success",
-                        type: "build",
-                        approvedBy: nil,
+                        type: "approval",
+                        approvedBy: "user-123",
                         startedAt: nil,
                         stoppedAt: nil,
                         jobNumber: 10
                     ),
                     WorkflowJob(
-                        id: "job-2",
+                        id: "job-1",
                         name: "Deploy",
                         projectSlug: "gh/org/repo",
-                        status: "canceled",
+                        status: "running",
                         type: "deploy",
                         approvedBy: nil,
                         startedAt: nil,
@@ -143,7 +143,7 @@ final class AutoApprovalPollerTests: XCTestCase {
             }
         )
         let appState = AppState(autoApprovalPoller: poller)
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
 
         appState.armAutoApprove(for: makeBuild())
         await poller.checkNow()
@@ -164,7 +164,7 @@ final class AutoApprovalPollerTests: XCTestCase {
             approvePendingJob: { _, _ in }
         )
         let appState = AppState(autoApprovalPoller: poller)
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
 
         appState.armAutoApprove(for: makeBuild())
         await poller.checkNow()

@@ -187,6 +187,14 @@ enum BuildStatus: String {
 // MARK: - Build Extensions
 
 extension Build {
+    var projectOrganizationName: String? {
+        username
+    }
+
+    var projectRepositoryName: String {
+        reponame ?? "unknown"
+    }
+
     var buildStatus: BuildStatus {
         BuildStatus(status: status, outcome: outcome, lifecycle: lifecycle)
     }

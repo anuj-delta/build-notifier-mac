@@ -8,7 +8,7 @@ struct VercelDeploymentRow: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 10) {
             leadingIndicator
                 .padding(.top, 2)
 
@@ -36,9 +36,10 @@ struct VercelDeploymentRow: View {
                 .frame(width: 58, alignment: .trailing)
                 .monospacedDigit()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(isHovered ? AppChrome.hover : Color.clear)
+        .padding(.leading, 0)
+        .padding(.trailing, 12)
+        .padding(.vertical, 9)
+        .background(Color.clear)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
@@ -105,32 +106,23 @@ struct VercelProjectSection: View {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 10) {
+                HStack(alignment: .center, spacing: 10) {
+                    Text(project.displayName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppChrome.text)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Spacer()
+
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(AppChrome.textMuted)
-                        .frame(width: 12)
-
-                    Image(systemName: "triangle.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(AppChrome.text)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(project.displayName)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(AppChrome.text)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-
-                        Text(deploymentCountLabel)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(AppChrome.textMuted)
-                    }
-
-                    Spacer()
+                        .frame(width: 12, height: 12)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .padding(.leading, 0)
+                .padding(.trailing, 12)
+                .padding(.vertical, 9)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -151,7 +143,6 @@ struct VercelProjectSection: View {
 
                             if index < min(deployments.count, 5) - 1 {
                                 Divider()
-                                    .padding(.leading, 40)
                             }
                         }
                     }
@@ -163,12 +154,5 @@ struct VercelProjectSection: View {
                 .fill(AppChrome.separator)
                 .frame(height: 1)
         }
-    }
-
-    private var deploymentCountLabel: String {
-        if isFiltered {
-            return "\(deployments.count) matching deployments"
-        }
-        return "\(deployments.count) recent deployments"
     }
 }
