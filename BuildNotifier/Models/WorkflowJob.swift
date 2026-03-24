@@ -37,6 +37,17 @@ struct WorkflowJob: Codable, Identifiable, Equatable {
         isApprovalJob && approvedBy != nil
     }
 
+    var canStillRequireApproval: Bool {
+        guard isApprovalJob, approvedBy == nil else { return false }
+
+        switch status {
+        case "blocked", "on_hold", "not_run":
+            return true
+        default:
+            return false
+        }
+    }
+
     var keepsWorkflowActionable: Bool {
         switch status {
         case "running", "queued", "blocked", "on_hold":

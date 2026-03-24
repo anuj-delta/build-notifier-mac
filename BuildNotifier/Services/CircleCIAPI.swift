@@ -135,6 +135,22 @@ actor CircleCIAPI {
         )
         return response.items
     }
+
+    /// Get workflow details, including the owning pipeline ID.
+    func getWorkflow(workflowId: String) async throws -> WorkflowDetails {
+        try await request(
+            url: "\(baseURLv2)/workflow/\(workflowId)",
+            method: "GET"
+        )
+    }
+
+    /// Get pipeline details, including the trigger actor.
+    func getPipeline(pipelineId: String) async throws -> PipelineDetails {
+        try await request(
+            url: "\(baseURLv2)/pipeline/\(pipelineId)",
+            method: "GET"
+        )
+    }
     
     /// Approve a pending approval job
     func approveJob(workflowId: String, approvalRequestId: String) async throws {

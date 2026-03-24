@@ -195,16 +195,16 @@ struct MenuBarContentView: View {
     }
 
     private func header(snapshot: MenuBarSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                AppBrandIcon(size: 34)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                AppBrandIcon(size: 30)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Build Notifier")
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(MenuPalette.ink)
                     Text("Approvals, builds, and deployment signals.")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(MenuPalette.mutedInk)
                 }
 
@@ -229,9 +229,9 @@ struct MenuBarContentView: View {
                 )
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
         .background(MenuPalette.card)
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -242,13 +242,14 @@ struct MenuBarContentView: View {
     }
 
     private var headerActions: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Button {
                 toggleSearch()
             } label: {
                 Image(systemName: isSearchExpanded ? "line.3.horizontal.decrease.circle.fill" : "magnifyingglass")
                     .font(.system(size: 12, weight: .medium))
-                    .frame(width: 28, height: 28)
+                    .foregroundStyle(AppChrome.text)
+                    .frame(width: 26, height: 26)
             }
             .buttonStyle(.plain)
             .background(AppChrome.surfaceMuted)
@@ -271,8 +272,9 @@ struct MenuBarContentView: View {
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(AppChrome.text)
                     .rotationEffect(.degrees(isRefreshing ? 360 : 0))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 26, height: 26)
             }
             .buttonStyle(.plain)
             .background(AppChrome.surfaceMuted)
@@ -289,7 +291,8 @@ struct MenuBarContentView: View {
             } label: {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 12, weight: .medium))
-                    .frame(width: 28, height: 28)
+                    .foregroundStyle(AppChrome.text)
+                    .frame(width: 26, height: 26)
             }
             .buttonStyle(.plain)
             .background(AppChrome.surfaceMuted)
@@ -326,8 +329,8 @@ struct MenuBarContentView: View {
                 .accessibilityLabel("Clear search")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
         .background(AppChrome.surfaceMuted)
         .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous))
         .overlay(
@@ -389,11 +392,11 @@ struct MenuBarContentView: View {
 
     private func buildsList(snapshot: MenuBarSnapshot) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
+            LazyVStack(alignment: .leading, spacing: 8) {
                 tabContent(snapshot: snapshot)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
         }
         .frame(minHeight: buildsListMinHeight, maxHeight: buildsListMaxHeight)
     }
@@ -416,7 +419,7 @@ struct MenuBarContentView: View {
             .foregroundStyle(MenuPalette.mutedInk)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.vertical, 10)
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(AppChrome.separator)
@@ -549,8 +552,7 @@ struct MenuBarContentView: View {
         if !snapshot.filteredGroupedBuilds.isEmpty {
             PopoverSectionHeader(
                 title: "CircleCI",
-                subtitle: snapshot.hasSearchQuery ? "Matching builds and approvals" : "Recent builds and approvals",
-                markStyle: .circleCI
+                subtitle: snapshot.hasSearchQuery ? "Matching builds and approvals" : "Recent builds and approvals"
             )
 
             ForEach(snapshot.filteredGroupedBuilds, id: \.project.id) { item in
@@ -582,8 +584,7 @@ struct MenuBarContentView: View {
         if !snapshot.filteredVercelProjects.isEmpty {
             PopoverSectionHeader(
                 title: "Vercel",
-                subtitle: snapshot.hasSearchQuery ? "Matching deployments" : "Watched deployments",
-                markStyle: .vercel
+                subtitle: snapshot.hasSearchQuery ? "Matching deployments" : "Watched deployments"
             )
 
             ForEach(snapshot.filteredVercelProjects, id: \.project.id) { item in
@@ -865,6 +866,8 @@ struct MenuBarTabPicker: View {
     var body: some View {
         HStack(spacing: 6) {
             ForEach(tabs, id: \.self) { tab in
+                let isSelected = selectedTab == tab
+
                 Button {
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
@@ -872,31 +875,38 @@ struct MenuBarTabPicker: View {
                         selectedTab = tab
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        ProviderMark(style: tab.markStyle, color: selectedTab == tab ? .primary : .secondary, size: 12)
-
+                    HStack(spacing: 5) {
                         Text(tab.title)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 12, weight: isSelected ? .bold : .semibold))
+                            .foregroundStyle(isSelected ? Color.white : AppChrome.text)
                             .lineLimit(1)
 
                         Text("\(countProvider(tab))")
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(selectedTab == tab ? AppChrome.accent : AppChrome.textMuted)
+                            .foregroundStyle(isSelected ? Color.white.opacity(0.84) : AppChrome.textMuted)
                             .monospacedDigit()
                     }
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 7)
                     .background(
-                        RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous)
-                            .fill(selectedTab == tab ? AppChrome.accentSoft : Color.clear)
+                        RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous)
+                            .fill(isSelected ? AppChrome.accent : Color.clear)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous)
-                            .stroke(selectedTab == tab ? AppChrome.focus : AppChrome.border, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous)
+                            .stroke(isSelected ? AppChrome.accent.opacity(0.92) : Color.clear, lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
             }
+        }
+        .padding(4)
+        .background(AppChrome.surfaceMuted)
+        .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous)
+                .stroke(AppChrome.border, lineWidth: 1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -978,14 +988,12 @@ struct ProviderEmptyStateCard: View {
 struct PopoverSectionHeader: View {
     let title: String
     let subtitle: String
-    let markStyle: ProviderMarkStyle
 
     var body: some View {
-        HStack(spacing: 8) {
-            ProviderMark(style: markStyle, color: .secondary, size: 12)
+        HStack {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(MenuPalette.ink)
                 Text(subtitle)
                     .font(.system(size: 11, weight: .regular))
@@ -993,7 +1001,7 @@ struct PopoverSectionHeader: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 2)
+        .padding(.vertical, 2)
     }
 }
 
@@ -1079,9 +1087,9 @@ struct PendingApprovalsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Label("Pending Approvals", systemImage: "pause.circle.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(MenuPalette.approval)
+                Text("Pending Approvals")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(MenuPalette.ink)
 
                 Spacer()
 
@@ -1089,10 +1097,12 @@ struct PendingApprovalsSection: View {
                     .font(.system(size: 11, weight: .medium))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(MenuPalette.approval.opacity(0.12))
+                    .foregroundStyle(MenuPalette.approval)
+                    .background(MenuPalette.approval.opacity(0.10))
                     .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous))
             }
-            .padding(14)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
 
             Divider()
 
@@ -1108,7 +1118,6 @@ struct PendingApprovalsSection: View {
 
                 if index < approvals.count - 1 {
                     Divider()
-                        .padding(.leading, 40)
                 }
             }
         }
@@ -1134,17 +1143,36 @@ struct ApprovalRow: View {
     let onOpen: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: "pause.circle.fill")
                 .foregroundStyle(MenuPalette.approval)
                 .frame(width: 14, height: 14)
+                .padding(.top, 2)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(approval.build.projectSlug)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(MenuPalette.ink)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    RepositoryPathLabel(
+                        organization: approval.build.projectOrganizationName,
+                        repository: approval.build.projectRepositoryName,
+                        repositoryFont: .system(size: 13, weight: .semibold),
+                        organizationFont: .system(size: 13, weight: .medium),
+                        repositoryColor: MenuPalette.ink,
+                        organizationColor: MenuPalette.mutedInk,
+                        truncationMode: .middle
+                    )
 
-                Text("\(approval.jobName) • \(approval.build.branch ?? "unknown")")
+                    if isAutoApproveArmed {
+                        Text("Armed")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(AppChrome.accent)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(AppChrome.accentSoft)
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    }
+                }
+
+                Text("\(approval.build.branch ?? "unknown") • \(approval.jobName)")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(MenuPalette.mutedInk)
                     .lineLimit(1)
@@ -1152,40 +1180,35 @@ struct ApprovalRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer()
-
-            if isAutoApproveArmed {
-                Text("Armed")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(AppChrome.accent)
-            }
-
-            Button(isAutoApproveArmed ? "Cancel Auto" : "Auto-Approve") {
-                if isAutoApproveArmed {
-                    onCancelAutoApprove()
-                } else {
-                    onAutoApprove()
-                }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.mini)
-
             Button("Approve") {
                 onApprove()
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.mini)
 
-            Button {
-                onOpen()
+            Menu {
+                Button(isAutoApproveArmed ? "Cancel Auto-Approve" : "Auto-Approve") {
+                    if isAutoApproveArmed {
+                        onCancelAutoApprove()
+                    } else {
+                        onAutoApprove()
+                    }
+                }
+
+                Button("Open in Browser") {
+                    onOpen()
+                }
             } label: {
-                Image(systemName: "arrow.up.forward.square")
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isAutoApproveArmed ? AppChrome.accent : MenuPalette.mutedInk)
+                    .frame(width: 18, height: 18)
             }
             .buttonStyle(.plain)
-            .help("Open in browser")
-            .accessibilityLabel("Open in browser")
+            .help("More actions")
+            .accessibilityLabel("More approval actions")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
     }
 }

@@ -141,17 +141,7 @@ final class AutoApprovalPoller: ObservableObject {
     private func shouldClearArmedApproval(for jobs: [WorkflowJob]) -> Bool {
         guard !jobs.isEmpty else { return false }
 
-        if jobs.contains(where: { $0.isApproved }) {
-            return true
-        }
-
-        let hasActiveJobs = jobs.contains(where: { $0.keepsWorkflowActionable })
-        if hasActiveJobs {
-            return false
-        }
-
-        let onlyNotRunJobsRemain = jobs.allSatisfy { $0.status == "not_run" }
-        if onlyNotRunJobsRemain {
+        if jobs.contains(where: \.canStillRequireApproval) {
             return false
         }
 
