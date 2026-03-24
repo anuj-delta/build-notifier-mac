@@ -19,6 +19,11 @@ let package = Package(
             resources: [
                 .process("Assets.xcassets")
             ]
+        ),
+        .testTarget(
+            name: "BuildNotifierTests",
+            dependencies: ["BuildNotifier"],
+            path: "Tests/BuildNotifierTests"
         )
     ]
 )

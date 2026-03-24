@@ -104,6 +104,33 @@ final class NotificationManager: NSObject, ObservableObject {
         
         UNUserNotificationCenter.current().add(request)
     }
+
+    func sendAutoApprovedNotification(
+        armedApproval: ArmedAutoApproval,
+        jobName: String,
+        soundEnabled: Bool = true
+    ) {
+        guard isAuthorized else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Approval Auto-Approved"
+        content.subtitle = "\(armedApproval.projectSlug) (\(armedApproval.branch ?? "unknown"))"
+        content.body = "\(jobName) approved automatically"
+        content.sound = soundEnabled ? .default : nil
+        content.userInfo = [
+            "buildUrl": armedApproval.buildUrl ?? "",
+            "workflowId": armedApproval.workflowId,
+            "type": "auto_approved"
+        ]
+
+        let request = UNNotificationRequest(
+            identifier: "auto-approved-\(armedApproval.workflowId)",
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request)
+    }
     
     func sendBuildStartedNotification(build: Build, soundEnabled: Bool = true) {
         guard isAuthorized else { return }

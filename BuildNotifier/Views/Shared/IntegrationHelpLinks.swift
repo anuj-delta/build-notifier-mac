@@ -13,15 +13,35 @@ struct IntegrationHelpLinkRow: View {
 
     var body: some View {
         Link(destination: destination) {
-            HStack(spacing: 10) {
-                Image(systemName: "arrow.up.right.square")
-                    .foregroundStyle(.blue)
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppChrome.accent)
+                    .frame(width: 16, height: 16)
 
-                Text(title)
-                    .font(.subheadline)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppChrome.text)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
-                Spacer()
+                    Text(destination.host() ?? destination.absoluteString)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppChrome.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AppChrome.textMuted)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

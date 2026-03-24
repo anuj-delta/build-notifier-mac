@@ -36,6 +36,15 @@ struct WorkflowJob: Codable, Identifiable, Equatable {
     var isApproved: Bool {
         isApprovalJob && approvedBy != nil
     }
+
+    var keepsWorkflowActionable: Bool {
+        switch status {
+        case "running", "queued", "blocked", "on_hold":
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 // MARK: - Workflow Jobs Response
@@ -69,5 +78,31 @@ struct PendingApproval: Identifiable, Equatable {
     
     static func == (lhs: PendingApproval, rhs: PendingApproval) -> Bool {
         lhs.id == rhs.id
+    }
+}
+
+struct ArmedAutoApproval: Identifiable, Equatable {
+    let workflowId: String
+    let buildId: String
+    let buildNumber: Int
+    let projectSlug: String
+    let branch: String?
+    let label: String
+    let buildUrl: String?
+    let armedAt: Date
+
+    var id: String { workflowId }
+
+    init?(build: Build, armedAt: Date = Date()) {
+        guard let workflowId = build.workflows?.workflowId else { return nil }
+
+        self.workflowId = workflowId
+        self.buildId = build.id
+        self.buildNumber = build.buildNum
+        self.projectSlug = build.projectSlug
+        self.branch = build.branch
+        self.label = build.autoApproveLabel
+        self.buildUrl = build.workflowUrl ?? build.buildUrl
+        self.armedAt = armedAt
     }
 }
