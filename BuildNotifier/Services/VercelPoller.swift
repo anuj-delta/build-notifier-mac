@@ -9,7 +9,7 @@ final class VercelPoller: ObservableObject {
     @Published private(set) var lastPollTime: Date?
     @Published private(set) var error: Error?
     
-    private var timer: Timer?
+    private var scheduleTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
     private var hasEstablishedBaseline = false
     
@@ -27,16 +27,20 @@ final class VercelPoller: ObservableObject {
 
         poll()
         
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.poll()
+        scheduleTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                if Task.isCancelled { break }
+                self.poll()
             }
         }
     }
     
     func stopPolling() {
-        timer?.invalidate()
-        timer = nil
+        scheduleTask?.cancel()
+        scheduleTask = nil
         pollTask?.cancel()
         pollTask = nil
         isPolling = false

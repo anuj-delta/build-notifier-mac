@@ -21,6 +21,8 @@ final class AppState {
     var projects: [Project] = []
     var buildsByProject: [String: [Build]] = [:]
     var pendingApprovals: [PendingApproval] = []
+    var workflowApprovalSupport: [String: Bool] = [:]
+    var armedAutoApprovals: [String: ArmedAutoApproval] = [:]
     var notifiedApprovals: Set<String> = []
     var notifiedSuccessWorkflows: Set<String> = []
     var notifiedFailedWorkflows: Set<String> = []
@@ -42,12 +44,21 @@ final class AppState {
     var showingSettings = false
     
     // MARK: - Services
-    let poller = BuildPoller()
-    let vercelPoller = VercelPoller()
+    let poller: BuildPoller
+    let vercelPoller: VercelPoller
+    let autoApprovalPoller: AutoApprovalPoller
     
-    init() {
-        poller.appState = self
-        vercelPoller.appState = self
+    init(
+        poller: BuildPoller? = nil,
+        vercelPoller: VercelPoller? = nil,
+        autoApprovalPoller: AutoApprovalPoller? = nil
+    ) {
+        self.poller = poller ?? BuildPoller()
+        self.vercelPoller = vercelPoller ?? VercelPoller()
+        self.autoApprovalPoller = autoApprovalPoller ?? AutoApprovalPoller()
+        self.poller.appState = self
+        self.vercelPoller.appState = self
+        self.autoApprovalPoller.appState = self
     }
     
     // MARK: - Computed Properties
@@ -58,6 +69,16 @@ final class AppState {
     
     var watchedVercelProjects: [WatchedVercelProject] {
         preferences.watchedVercelProjects.filter { $0.isEnabled }
+    }
+
+    var armedAutoApprovalWorkflowIds: Set<String> {
+        Set(armedAutoApprovals.keys)
+    }
+
+    var approvalCapableWorkflowIds: Set<String> {
+        Set(workflowApprovalSupport.compactMap { workflowId, supportsApproval in
+            supportsApproval ? workflowId : nil
+        })
     }
     
     var hasCircleCIToken: Bool {
@@ -190,6 +211,8 @@ final class AppState {
     // MARK: - Actions
     
     func initialize() async {
+        workflowApprovalSupport.removeAll()
+        armedAutoApprovals.removeAll()
         await NotificationManager.shared.requestAuthorization()
         NotificationManager.shared.setupNotificationCategories()
         
@@ -265,10 +288,12 @@ final class AppState {
     
     func startPolling() {
         poller.startPolling(interval: TimeInterval(preferences.pollingIntervalSeconds))
+        autoApprovalPoller.startPolling(interval: 120)
     }
     
     func stopPolling() {
         poller.stopPolling()
+        autoApprovalPoller.stopPolling()
     }
     
     func startVercelPolling() {
@@ -296,6 +321,7 @@ final class AppState {
     func refreshNow() {
         if hasCircleCIToken {
             poller.poll()
+            autoApprovalPoller.poll()
         }
         if hasVercelToken {
             vercelPoller.poll()
@@ -342,11 +368,42 @@ final class AppState {
                 workflowId: approval.workflowId,
                 approvalRequestId: approval.jobId
             )
+            armedAutoApprovals.removeValue(forKey: approval.workflowId)
             // Refresh after approval
             poller.poll()
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    func recordWorkflowApprovalSupport(workflowId: String, jobs: [WorkflowJob]) {
+        workflowApprovalSupport[workflowId] = jobs.contains(where: \.isApprovalJob)
+    }
+
+    func mergeWorkflowApprovalSupport(_ supportByWorkflowId: [String: Bool]) {
+        workflowApprovalSupport.merge(supportByWorkflowId) { _, new in new }
+    }
+
+    func canAutoApprove(_ build: Build) -> Bool {
+        guard !build.buildStatus.isTerminal,
+              let workflowId = build.workflows?.workflowId else {
+            return false
+        }
+
+        return workflowApprovalSupport[workflowId] == true
+    }
+
+    func armAutoApprove(for build: Build) {
+        guard canAutoApprove(build),
+              let armedApproval = ArmedAutoApproval(build: build) else {
+            return
+        }
+        armedAutoApprovals[armedApproval.workflowId] = armedApproval
+        autoApprovalPoller.poll()
+    }
+
+    func cancelAutoApprove(forWorkflowId workflowId: String) {
+        armedAutoApprovals.removeValue(forKey: workflowId)
     }
     
     func signOut() {
@@ -359,6 +416,8 @@ final class AppState {
         projects = []
         buildsByProject = [:]
         pendingApprovals = []
+        workflowApprovalSupport = [:]
+        armedAutoApprovals = [:]
         preferences.watchedProjects = []
         preferences.save()
         currentScreen = .onboarding
@@ -375,6 +434,8 @@ final class AppState {
         projects = []
         buildsByProject = [:]
         pendingApprovals = []
+        workflowApprovalSupport = [:]
+        armedAutoApprovals = [:]
         // Note: watchedProjects is preserved
         currentScreen = .onboarding
     }

@@ -1,41 +1,48 @@
 import SwiftUI
 
 struct VercelDeploymentRow: View {
+    private let labelMaxWidth: CGFloat = 220
+
     let deployment: VercelDeployment
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 11) {
-            leadingIndicator
+    @State private var isHovered = false
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(primaryLabel)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .lineLimit(1)
-                    Text(deployment.relativeTime)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            leadingIndicator
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(primaryLabel)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(AppChrome.text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: labelMaxWidth, alignment: .leading)
 
                 Text(deployment.truncatedCommitMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(AppChrome.textMuted)
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer()
+            Spacer(minLength: 0)
 
             Text(deployment.relativeTime)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(width: 62, alignment: .trailing)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(AppChrome.textMuted)
+                .frame(width: 58, alignment: .trailing)
+                .monospacedDigit()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .cornerRadius(12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(isHovered ? AppChrome.hover : Color.clear)
         .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
         .onTapGesture {
             openDeployment()
         }
@@ -47,14 +54,12 @@ struct VercelDeploymentRow: View {
             ProgressView()
                 .controlSize(.small)
                 .tint(.orange)
-                .frame(width: 18, height: 18, alignment: .top)
-                .padding(.top, 1)
+                .frame(width: 14, height: 14)
         } else {
             Image(systemName: deployment.deploymentStatus.iconName)
-                .font(.subheadline)
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(statusColor)
-                .frame(width: 18, alignment: .top)
-                .padding(.top, 1)
+                .frame(width: 14, height: 14)
         }
     }
 
@@ -90,63 +95,74 @@ struct VercelProjectSection: View {
     let project: WatchedVercelProject
     let deployments: [VercelDeployment]
     let isFiltered: Bool
+
     @State private var isExpanded = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(.easeInOut(duration: 0.16)) {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(AppChrome.textMuted)
                         .frame(width: 12)
 
                     Image(systemName: "triangle.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.primary)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AppChrome.text)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(project.displayName)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(AppChrome.text)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
 
                         Text(deploymentCountLabel)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(AppChrome.textMuted)
                     }
 
                     Spacer()
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             if isExpanded {
+                Divider()
+
                 if deployments.isEmpty {
                     Text("No recent deployments")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(nsColor: .windowBackgroundColor))
-                        .cornerRadius(12)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppChrome.textMuted)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
                 } else {
-                    VStack(spacing: 6) {
-                        ForEach(deployments.prefix(5)) { deployment in
+                    VStack(spacing: 0) {
+                        ForEach(Array(deployments.prefix(5).enumerated()), id: \.element.id) { index, deployment in
                             VercelDeploymentRow(deployment: deployment)
+
+                            if index < min(deployments.count, 5) - 1 {
+                                Divider()
+                                    .padding(.leading, 40)
+                            }
                         }
                     }
                 }
             }
         }
-        .padding(11)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(14)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppChrome.separator)
+                .frame(height: 1)
+        }
     }
 
     private var deploymentCountLabel: String {
@@ -155,5 +171,4 @@ struct VercelProjectSection: View {
         }
         return "\(deployments.count) recent deployments"
     }
-
 }

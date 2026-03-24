@@ -4,61 +4,87 @@ struct ProjectSection: View {
     let project: WatchedProject
     let buildsByBranch: [String: [Build]]
     let isFiltered: Bool
+    let approvalCapableWorkflowIds: Set<String>
+    let armedAutoApprovalWorkflowIds: Set<String>
     let onRetry: (Build) -> Void
     let onCancel: (Build) -> Void
+    let onArmAutoApprove: (Build) -> Void
+    let onCancelAutoApprove: (String) -> Void
     let onOpen: (Build) -> Void
 
     @State private var isExpanded = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(.easeInOut(duration: 0.16)) {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(AppChrome.textMuted)
                         .frame(width: 12)
 
-                    ProviderMark(style: .circleCI, color: Color.accentColor, size: 13)
+                    ProviderMark(style: .circleCI, color: AppChrome.accent, size: 12)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(project.displayName)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(AppChrome.text)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
 
                         Text(branchCountLabel)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(AppChrome.textMuted)
                     }
 
                     Spacer()
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             if isExpanded {
-                VStack(spacing: 6) {
-                    ForEach(sortedBranches, id: \.self) { branch in
+                Divider()
+
+                VStack(spacing: 0) {
+                    ForEach(Array(sortedBranches.enumerated()), id: \.element) { index, branch in
                         if let builds = buildsByBranch[branch], let build = builds.first {
+                            let workflowId = build.workflows?.workflowId
                             BuildRow(
                                 build: build,
+                                canAutoApprove: workflowId.map { approvalCapableWorkflowIds.contains($0) } ?? false,
+                                isAutoApproveArmed: workflowId.map { armedAutoApprovalWorkflowIds.contains($0) } ?? false,
                                 onRetry: { onRetry(build) },
                                 onCancel: { onCancel(build) },
+                                onAutoApprove: { onArmAutoApprove(build) },
+                                onCancelAutoApprove: {
+                                    if let workflowId = build.workflows?.workflowId {
+                                        onCancelAutoApprove(workflowId)
+                                    }
+                                },
                                 onOpen: { onOpen(build) }
                             )
+
+                            if index < sortedBranches.count - 1 {
+                                Divider()
+                                    .padding(.leading, 40)
+                            }
                         }
                     }
                 }
             }
         }
-        .padding(11)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(14)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppChrome.separator)
+                .frame(height: 1)
+        }
     }
 
     private var sortedBranches: [String] {
@@ -78,9 +104,15 @@ struct ProjectSection: View {
 }
 
 struct BuildRow: View {
+    private let branchLabelMaxWidth: CGFloat = 188
+
     let build: Build
+    let canAutoApprove: Bool
+    let isAutoApproveArmed: Bool
     let onRetry: () -> Void
     let onCancel: () -> Void
+    let onAutoApprove: () -> Void
+    let onCancelAutoApprove: () -> Void
     let onOpen: () -> Void
 
     @State private var isHovered = false
@@ -89,43 +121,57 @@ struct BuildRow: View {
         Button {
             onOpen()
         } label: {
-            HStack(alignment: .top, spacing: 11) {
-                leadingIndicator
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 12) {
+                    leadingIndicator
+                        .padding(.top, 2)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(build.branch ?? "unknown")
-                            .font(.caption)
-                            .fontWeight(.semibold)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(build.branch ?? "unknown")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(AppChrome.text)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: branchLabelMaxWidth, alignment: .leading)
+
+                            Text("#\(build.buildNum)")
+                                .font(.system(size: 12, weight: .regular))
+                                .foregroundStyle(AppChrome.textMuted)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .monospacedDigit()
+
+                            if isAutoApproveArmed {
+                                Text("Auto")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(AppChrome.accent)
+                            }
+                        }
+
+                        Text(build.truncatedSubject)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(AppChrome.textMuted)
                             .lineLimit(1)
+                            .truncationMode(.tail)
 
-                        Text("#\(build.buildNum)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                        actionSlot
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Text(build.truncatedSubject)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    Text(build.relativeTime)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppChrome.textMuted)
+                        .frame(width: 62, alignment: .trailing)
+                        .monospacedDigit()
                 }
-
-                Spacer()
-
-                Text(build.relativeTime)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 62, alignment: .trailing)
-
-                actionButtons
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
             }
+            .background(rowBackground)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(isHovered ? Color.accentColor.opacity(0.08) : Color(nsColor: .windowBackgroundColor))
-        .cornerRadius(12)
         .onHover { hovering in
             isHovered = hovering
         }
@@ -137,57 +183,56 @@ struct BuildRow: View {
             ProgressView()
                 .controlSize(.small)
                 .tint(.orange)
-                .frame(width: 18, height: 18, alignment: .top)
-                .padding(.top, 1)
+                .frame(width: 14, height: 14)
         } else {
             Image(systemName: build.buildStatus.iconName)
-                .font(.subheadline)
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(statusColor)
-                .frame(width: 18, alignment: .top)
-                .padding(.top, 1)
+                .frame(width: 14, height: 14)
         }
     }
 
-    private var actionButtons: some View {
-        HStack(spacing: 6) {
+    private var actionSlot: some View {
+        HStack(spacing: 12) {
             if build.buildStatus.isFailure {
-                Button {
-                    onRetry()
-                } label: {
-                    actionLabel("Retry")
+                actionButton("Retry", action: onRetry)
+            }
+
+            if canAutoApprove || isAutoApproveArmed {
+                actionButton(isAutoApproveArmed ? "Cancel Auto" : "Auto-Approve") {
+                    if isAutoApproveArmed {
+                        onCancelAutoApprove()
+                    } else {
+                        onAutoApprove()
+                    }
                 }
-                .buttonStyle(.plain)
-                .help("Retry build")
             }
 
             if build.buildStatus.isRunning {
-                Button {
-                    onCancel()
-                } label: {
-                    actionLabel("Cancel")
-                }
-                .buttonStyle(.plain)
-                .help("Cancel build")
+                actionButton("Cancel", action: onCancel)
             }
         }
-        .frame(width: 72, alignment: .trailing)
-        .opacity(isHovered && hasActions ? 1 : 0)
-        .allowsHitTesting(isHovered && hasActions)
+        .frame(height: hasActions ? 16 : 0, alignment: .leading)
+        .opacity(hasActions && (isHovered || isAutoApproveArmed) ? 1 : 0)
+        .allowsHitTesting(hasActions && (isHovered || isAutoApproveArmed))
     }
 
-    private func actionLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.caption2)
-            .fontWeight(.semibold)
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .clipShape(Capsule(style: .continuous))
+    private func actionButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title) {
+            action()
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 11, weight: .medium))
+        .foregroundStyle(AppChrome.textMuted)
+        .help(title)
+    }
+
+    private var rowBackground: some View {
+        (isAutoApproveArmed ? AppChrome.accentSoft : (isHovered ? AppChrome.hover : Color.clear))
     }
 
     private var hasActions: Bool {
-        build.buildStatus.isFailure || build.buildStatus.isRunning
+        build.buildStatus.isFailure || build.buildStatus.isRunning || canAutoApprove || isAutoApproveArmed
     }
 
     private var statusColor: Color {
@@ -198,10 +243,10 @@ struct BuildRow: View {
             return .red
         case .canceled:
             return .gray
-        case .running, .notRunning, .queued, .scheduled:
+        case .running, .queued, .scheduled, .notRunning:
             return .orange
         case .onHold:
-            return .yellow
+            return AppChrome.warning
         default:
             return .gray
         }

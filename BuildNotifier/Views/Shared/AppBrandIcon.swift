@@ -5,11 +5,11 @@ struct AppBrandIcon: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+            RoundedRectangle(cornerRadius: size * 0.18, style: .continuous)
                 .fill(backgroundGradient)
                 .overlay {
-                    RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: max(1, size * 0.018))
+                    RoundedRectangle(cornerRadius: size * 0.18, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: max(1, size * 0.016))
                 }
 
             Circle()
@@ -21,7 +21,7 @@ struct AppBrandIcon: View {
             cloud
         }
         .frame(width: size, height: size)
-        .shadow(color: .black.opacity(0.12), radius: size * 0.08, y: size * 0.03)
+        .shadow(color: .black.opacity(0.08), radius: size * 0.05, y: size * 0.02)
     }
 
     private var cloud: some View {

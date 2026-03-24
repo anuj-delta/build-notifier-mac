@@ -9,13 +9,30 @@ final class BuildPoller: ObservableObject {
     @Published private(set) var lastPollTime: Date?
     @Published private(set) var error: Error?
     
-    private var timer: Timer?
+    private var scheduleTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
     private var hasEstablishedBaseline = false
+    private let fetchBuilds: (String, String, String, Int) async throws -> [Build]
+    private let fetchWorkflowJobs: (String) async throws -> [WorkflowJob]
     
     weak var appState: AppState?
     
-    init() {}
+    init(
+        fetchBuilds: ((String, String, String, Int) async throws -> [Build])? = nil,
+        fetchWorkflowJobs: ((String) async throws -> [WorkflowJob])? = nil
+    ) {
+        self.fetchBuilds = fetchBuilds ?? { vcsType, orgName, repoName, limit in
+            try await CircleCIAPI.shared.getBuilds(
+                vcsType: vcsType,
+                orgName: orgName,
+                repoName: repoName,
+                limit: limit
+            )
+        }
+        self.fetchWorkflowJobs = fetchWorkflowJobs ?? { workflowId in
+            try await CircleCIAPI.shared.getWorkflowJobs(workflowId: workflowId)
+        }
+    }
     
     // MARK: - Start/Stop Polling
     
@@ -29,16 +46,20 @@ final class BuildPoller: ObservableObject {
         poll()
         
         // Then poll on interval
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.poll()
+        scheduleTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                if Task.isCancelled { break }
+                self.poll()
             }
         }
     }
     
     func stopPolling() {
-        timer?.invalidate()
-        timer = nil
+        scheduleTask?.cancel()
+        scheduleTask = nil
         pollTask?.cancel()
         pollTask = nil
         isPolling = false
@@ -50,6 +71,10 @@ final class BuildPoller: ObservableObject {
         pollTask = Task {
             await performPoll()
         }
+    }
+
+    func checkNow() async {
+        await performPoll()
     }
     
     // MARK: - Poll Implementation
@@ -72,20 +97,23 @@ final class BuildPoller: ObservableObject {
         let currentUserLogin = appState.currentUser?.login
         let currentUserEmail = appState.currentUser?.selectedEmail
         let currentUserName = appState.currentUser?.name
+        let fetchBuilds = self.fetchBuilds
+        let fetchWorkflowJobs = self.fetchWorkflowJobs
         
         // Fetch builds for each watched project
         var newBuildsByProject: [String: [Build]] = [:]
         var newPendingApprovals: [PendingApproval] = []
-        
-        await withTaskGroup(of: (String, [Build], [PendingApproval])?.self) { group in
+        var workflowApprovalSupport: [String: Bool] = [:]
+
+        await withTaskGroup(of: (String, [Build], [PendingApproval], [String: Bool])?.self) { group in
             for project in watchedProjects {
                 group.addTask {
                     do {
-                        var builds = try await CircleCIAPI.shared.getBuilds(
-                            vcsType: project.vcsType,
-                            orgName: project.orgName,
-                            repoName: project.repoName,
-                            limit: 30
+                        var builds = try await fetchBuilds(
+                            project.vcsType,
+                            project.orgName,
+                            project.repoName,
+                            30
                         )
                         
                         // Filter to user's builds if needed
@@ -116,6 +144,7 @@ final class BuildPoller: ObservableObject {
                         // Check for pending approvals
                         // Dedupe by workflow ID to avoid redundant API calls
                         var approvals: [PendingApproval] = []
+                        var approvalSupport: [String: Bool] = [:]
                         var checkedWorkflowIds = Set<String>()
 
                         // Check all unique workflows from recent builds (limit to avoid rate limits)
@@ -130,7 +159,8 @@ final class BuildPoller: ObservableObject {
                             checkedWorkflowIds.insert(workflowId)
                             
                             do {
-                                let jobs = try await CircleCIAPI.shared.getWorkflowJobs(workflowId: workflowId)
+                                let jobs = try await fetchWorkflowJobs(workflowId)
+                                approvalSupport[workflowId] = jobs.contains(where: \.isApprovalJob)
 
                                 // Check if any non-approval jobs are still in progress
                                 // (running, queued, or blocked waiting for something other than approval)
@@ -151,7 +181,7 @@ final class BuildPoller: ObservableObject {
                             }
                         }
                         
-                        return (project.slug, builds, approvals)
+                        return (project.slug, builds, approvals, approvalSupport)
                     } catch {
                         return nil
                     }
@@ -159,9 +189,10 @@ final class BuildPoller: ObservableObject {
             }
             
             for await result in group {
-                if let (slug, builds, approvals) = result {
+                if let (slug, builds, approvals, approvalSupport) = result {
                     newBuildsByProject[slug] = builds
                     newPendingApprovals.append(contentsOf: approvals)
+                    workflowApprovalSupport.merge(approvalSupport) { _, new in new }
                 }
             }
         }
@@ -169,6 +200,7 @@ final class BuildPoller: ObservableObject {
         // Update state
         appState.buildsByProject = newBuildsByProject
         appState.pendingApprovals = newPendingApprovals
+        appState.mergeWorkflowApprovalSupport(workflowApprovalSupport)
         lastPollTime = Date()
 
         if !hasEstablishedBaseline {
@@ -198,6 +230,7 @@ final class BuildPoller: ObservableObject {
         currentApprovals: [PendingApproval]
     ) async {
         guard let appState = appState else { return }
+        let fetchWorkflowJobs = self.fetchWorkflowJobs
 
         var startedWorkflows = Set<String>()
         var failedWorkflows = Set<String>()
@@ -222,7 +255,7 @@ final class BuildPoller: ObservableObject {
             }
 
             do {
-                let allJobs = try await CircleCIAPI.shared.getWorkflowJobs(workflowId: workflowId)
+                let allJobs = try await fetchWorkflowJobs(workflowId)
                 let hasIncompleteJobs = allJobs.contains { job in
                     let status = job.status
                     return status == "running" || status == "queued" ||

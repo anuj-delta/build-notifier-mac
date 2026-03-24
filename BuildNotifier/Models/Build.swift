@@ -130,6 +130,15 @@ enum BuildStatus: String {
     var isPending: Bool {
         self == .onHold
     }
+
+    var isTerminal: Bool {
+        switch self {
+        case .success, .fixed, .failed, .timedout, .infrastructureFail, .canceled, .retried, .noTests:
+            return true
+        default:
+            return false
+        }
+    }
     
     var displayName: String {
         switch self {
@@ -219,6 +228,16 @@ extension Build {
     var workflowUrl: String? {
         guard let workflowId = workflows?.workflowId else { return nil }
         return "https://app.circleci.com/pipelines/workflows/\(workflowId)"
+    }
+
+    var autoApproveLabel: String {
+        if let workflowName = workflows?.workflowName, !workflowName.isEmpty {
+            return workflowName
+        }
+        if let jobName = workflows?.jobName, !jobName.isEmpty {
+            return jobName
+        }
+        return "Build #\(buildNum)"
     }
 
     var relativeTime: String {

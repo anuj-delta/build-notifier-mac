@@ -21,11 +21,11 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .general: return "App behavior and startup"
-        case .notifications: return "Alert preferences"
-        case .circleCI: return "Projects and account"
-        case .vercel: return "Deployments and account"
-        case .about: return "Credits and app info"
+        case .general: return "App behavior, startup, and refresh settings."
+        case .notifications: return "Choose which alerts appear in the menu bar."
+        case .circleCI: return "Manage CircleCI account details and watched projects."
+        case .vercel: return "Manage Vercel account details and watched projects."
+        case .about: return "Version details and app actions."
         }
     }
 
@@ -35,7 +35,17 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .notifications: return "bell.badge"
         case .circleCI: return "arrow.triangle.branch"
         case .vercel: return "triangle.fill"
-        case .about: return "heart.text.square"
+        case .about: return "info.circle"
+        }
+    }
+
+    var eyebrow: String {
+        switch self {
+        case .general: return "System"
+        case .notifications: return "Alerts"
+        case .circleCI: return "CircleCI"
+        case .vercel: return "Vercel"
+        case .about: return "Build Notifier"
         }
     }
 }
@@ -49,26 +59,38 @@ struct SettingsView: View {
     @State private var showingVercelOnboarding = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
+        ZStack {
+            AppChrome.window
+                .ignoresSafeArea()
 
-            Divider()
+            HStack(spacing: 0) {
+                sidebar
 
-            VStack(spacing: 0) {
-                detailHeader
+                Rectangle()
+                    .fill(AppChrome.separator)
+                    .frame(width: 1)
 
-                Divider()
+                VStack(spacing: 0) {
+                    detailHeader
 
-                ScrollView {
-                    detailContent
-                        .padding(24)
+                    ScrollView {
+                        detailContent
+                            .padding(24)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .background(AppChrome.surface)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(AppChrome.surface)
+            .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusLarge, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: AppChrome.radiusLarge, style: .continuous)
+                    .stroke(AppChrome.border, lineWidth: 1)
+            }
+            .padding(12)
         }
-        .frame(minWidth: 860, minHeight: 620)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(minWidth: 940, minHeight: 660)
         .onAppear {
             NSApplication.shared.activate(ignoringOtherApps: true)
         }
@@ -79,39 +101,49 @@ struct SettingsView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                AppBrandIcon(size: 34)
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    AppBrandIcon(size: 40)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Build Notifier")
-                        .font(.headline)
-                    Text("CircleCI + Vercel")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Build Notifier")
+                            .font(.system(size: 19, weight: .semibold))
+                            .foregroundStyle(AppChrome.text)
+
+                        Text("CircleCI and Vercel release signals.")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(AppChrome.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                HStack(spacing: 14) {
+                    SidebarMetric(title: "Watching", value: "\(watchedItemCount)")
+
+                    Rectangle()
+                        .fill(AppChrome.separator)
+                        .frame(width: 1, height: 28)
+
+                    SidebarMetric(title: "Alerts", value: appState.preferences.notificationsEnabled ? "On" : "Off")
                 }
             }
 
-            VStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Navigation")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(AppChrome.textMuted)
+
                 ForEach(SettingsTab.allCases) { tab in
-                    Button {
-                        selectedTab = tab
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: tab.systemImage)
-                                .frame(width: 14)
-                            Text(tab.title)
-                            Spacer()
+                    SidebarTabButton(
+                        tab: tab,
+                        isSelected: selectedTab == tab,
+                        action: {
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                selectedTab = tab
+                            }
                         }
-                        .font(.subheadline)
-                        .fontWeight(selectedTab == tab ? .semibold : .regular)
-                        .foregroundStyle(selectedTab == tab ? Color.accentColor : Color.primary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(selectedTab == tab ? Color.accentColor.opacity(0.1) : Color.clear)
-                        .cornerRadius(10)
-                    }
-                    .buttonStyle(.plain)
+                    )
                 }
             }
 
@@ -119,34 +151,63 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Connected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(AppChrome.textMuted)
 
-                SettingsPill(title: "CircleCI", value: appState.hasCircleCIToken ? "On" : "Off")
-                SettingsPill(title: "Vercel", value: appState.hasVercelToken ? "On" : "Off")
+                VStack(spacing: 0) {
+                    SidebarStatusRow(title: "CircleCI", isActive: appState.hasCircleCIToken)
+                    Divider()
+                    SidebarStatusRow(title: "Vercel", isActive: appState.hasVercelToken)
+                }
             }
         }
-        .padding(18)
-        .frame(width: 220)
+        .padding(20)
+        .frame(width: 252)
         .frame(maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .underPageBackgroundColor))
+        .background(AppChrome.surfaceMuted)
     }
 
     private var detailHeader: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(selectedTab.title)
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                Text(selectedTab.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            Text(selectedTab.eyebrow.uppercased())
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(AppChrome.textMuted)
+
+            HStack(alignment: .firstTextBaseline, spacing: 20) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(selectedTab.title)
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(AppChrome.text)
+
+                    Text(selectedTab.subtitle)
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(AppChrome.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                VStack(alignment: .trailing, spacing: 6) {
+                    Text("\(integrationCount) integrations")
+                    Text("\(watchedItemCount) watched")
+                    Text("Refresh \(refreshIntervalLabel)")
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(AppChrome.textMuted)
+                .monospacedDigit()
             }
 
-            Spacer()
+            Text(appState.preferences.notificationsEnabled ? "Notifications enabled" : "Notifications muted")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(appState.preferences.notificationsEnabled ? AppChrome.accent : AppChrome.textMuted)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 18)
+        .padding(24)
+        .background(AppChrome.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppChrome.separator)
+                .frame(height: 1)
+        }
     }
 
     @ViewBuilder
@@ -166,20 +227,23 @@ struct SettingsView: View {
     }
 
     private var generalTab: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            SettingsHeroCard()
-
-            SettingsCard("Behavior", systemImage: "slider.horizontal.3") {
-                Toggle("Launch at login", isOn: Binding(
-                    get: { LaunchAtLoginService.shared.isEnabled },
-                    set: { LaunchAtLoginService.shared.isEnabled = $0 }
-                ))
+        VStack(alignment: .leading, spacing: 28) {
+            SettingsSection(
+                title: "Behavior",
+                subtitle: "Startup and polling preferences.",
+                systemImage: "slider.horizontal.3"
+            ) {
+                SettingsToggleRow(
+                    title: "Launch at login",
+                    isOn: Binding(
+                        get: { LaunchAtLoginService.shared.isEnabled },
+                        set: { LaunchAtLoginService.shared.isEnabled = $0 }
+                    )
+                )
 
                 Divider()
 
-                HStack {
-                    Text("Refresh interval")
-                    Spacer()
+                SettingsPickerRow(title: "Refresh interval") {
                     Picker("", selection: Binding(
                         get: { appState.preferences.pollingIntervalSeconds },
                         set: {
@@ -192,109 +256,152 @@ struct SettingsView: View {
                         Text("2 minutes").tag(120)
                         Text("5 minutes").tag(300)
                     }
+                    .labelsHidden()
                     .frame(width: 150)
                 }
             }
 
-            SettingsCard("Integrations", systemImage: "link") {
-                SettingsAccountField(label: "CircleCI watched projects", value: "\(appState.preferences.watchedProjects.count)")
-                SettingsAccountField(label: "Vercel watched projects", value: "\(appState.preferences.watchedVercelProjects.count)")
-                SettingsAccountField(label: "Overall status", value: appState.overallStatus.title)
+            SettingsSection(
+                title: "Overview",
+                subtitle: "Current integration and watch state.",
+                systemImage: "rectangle.3.group"
+            ) {
+                SettingsValueRow(label: "CircleCI watched projects", value: "\(appState.preferences.watchedProjects.count)")
+                Divider()
+                SettingsValueRow(label: "Vercel watched projects", value: "\(appState.preferences.watchedVercelProjects.count)")
+                Divider()
+                SettingsValueRow(label: "Overall status", value: appState.overallStatus.title)
             }
         }
     }
 
     private var notificationsTab: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            SettingsCard("Global", systemImage: "bell.badge") {
-                HStack {
-                    Toggle("Enable notifications", isOn: Binding(
+        VStack(alignment: .leading, spacing: 28) {
+            SettingsSection(
+                title: "Global",
+                subtitle: "Master notification preferences.",
+                systemImage: "bell.badge"
+            ) {
+                SettingsToggleRow(
+                    title: "Enable notifications",
+                    isOn: Binding(
                         get: { appState.preferences.notificationsEnabled },
                         set: {
                             appState.preferences.notificationsEnabled = $0
                             appState.savePreferences()
                         }
-                    ))
-                    .fontWeight(.medium)
-
-                    Spacer()
-
-                    Button("Test") {
-                        NotificationManager.shared.sendTestNotification()
+                    ),
+                    trailing: {
+                        Button("Test") {
+                            NotificationManager.shared.sendTestNotification()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
-                    .buttonStyle(.bordered)
-                }
+                )
 
                 Divider()
 
-                Toggle("Play sound", isOn: Binding(
-                    get: { appState.preferences.notificationSoundEnabled },
-                    set: {
-                        appState.preferences.notificationSoundEnabled = $0
-                        appState.savePreferences()
-                    }
-                ))
+                SettingsToggleRow(
+                    title: "Play sound",
+                    isOn: Binding(
+                        get: { appState.preferences.notificationSoundEnabled },
+                        set: {
+                            appState.preferences.notificationSoundEnabled = $0
+                            appState.savePreferences()
+                        }
+                    )
+                )
             }
 
-            SettingsCard("CircleCI Events", systemImage: "arrow.triangle.branch") {
-                Toggle("Build success", isOn: Binding(
-                    get: { appState.preferences.notifyOnSuccess },
-                    set: {
-                        appState.preferences.notifyOnSuccess = $0
-                        appState.savePreferences()
-                    }
-                ))
-
-                Toggle("Build failure", isOn: Binding(
-                    get: { appState.preferences.notifyOnFailure },
-                    set: {
-                        appState.preferences.notifyOnFailure = $0
-                        appState.savePreferences()
-                    }
-                ))
-
-                Toggle("Pending approval", isOn: Binding(
-                    get: { appState.preferences.notifyOnPendingApproval },
-                    set: {
-                        appState.preferences.notifyOnPendingApproval = $0
-                        appState.savePreferences()
-                    }
-                ))
-
-                Toggle("Build started", isOn: Binding(
-                    get: { appState.preferences.notifyOnBuildStarted },
-                    set: {
-                        appState.preferences.notifyOnBuildStarted = $0
-                        appState.savePreferences()
-                    }
-                ))
+            SettingsSection(
+                title: "CircleCI Events",
+                subtitle: "Build and approval notifications.",
+                systemImage: "arrow.triangle.branch"
+            ) {
+                SettingsToggleRow(
+                    title: "Build success",
+                    isOn: Binding(
+                        get: { appState.preferences.notifyOnSuccess },
+                        set: {
+                            appState.preferences.notifyOnSuccess = $0
+                            appState.savePreferences()
+                        }
+                    )
+                )
+                Divider()
+                SettingsToggleRow(
+                    title: "Build failure",
+                    isOn: Binding(
+                        get: { appState.preferences.notifyOnFailure },
+                        set: {
+                            appState.preferences.notifyOnFailure = $0
+                            appState.savePreferences()
+                        }
+                    )
+                )
+                Divider()
+                SettingsToggleRow(
+                    title: "Pending approval",
+                    isOn: Binding(
+                        get: { appState.preferences.notifyOnPendingApproval },
+                        set: {
+                            appState.preferences.notifyOnPendingApproval = $0
+                            appState.savePreferences()
+                        }
+                    )
+                )
+                Divider()
+                SettingsToggleRow(
+                    title: "Build started",
+                    isOn: Binding(
+                        get: { appState.preferences.notifyOnBuildStarted },
+                        set: {
+                            appState.preferences.notifyOnBuildStarted = $0
+                            appState.savePreferences()
+                        }
+                    )
+                )
             }
 
-            SettingsCard("Vercel Events", systemImage: "triangle.fill") {
-                Toggle("Deployment notifications", isOn: Binding(
-                    get: { appState.preferences.vercelNotificationsEnabled },
-                    set: {
-                        appState.preferences.vercelNotificationsEnabled = $0
-                        appState.savePreferences()
-                    }
-                ))
-
-                Toggle("Deployment ready", isOn: Binding(
-                    get: { appState.preferences.notifyOnDeploymentReady },
-                    set: {
-                        appState.preferences.notifyOnDeploymentReady = $0
-                        appState.savePreferences()
-                    }
-                ))
+            SettingsSection(
+                title: "Vercel Events",
+                subtitle: "Deployment notifications.",
+                systemImage: "triangle.fill"
+            ) {
+                SettingsToggleRow(
+                    title: "Deployment notifications",
+                    isOn: Binding(
+                        get: { appState.preferences.vercelNotificationsEnabled },
+                        set: {
+                            appState.preferences.vercelNotificationsEnabled = $0
+                            appState.savePreferences()
+                        }
+                    )
+                )
+                Divider()
+                SettingsToggleRow(
+                    title: "Deployment ready",
+                    isOn: Binding(
+                        get: { appState.preferences.notifyOnDeploymentReady },
+                        set: {
+                            appState.preferences.notifyOnDeploymentReady = $0
+                            appState.savePreferences()
+                        }
+                    )
+                )
                 .disabled(!appState.preferences.vercelNotificationsEnabled)
-
-                Toggle("Deployment error", isOn: Binding(
-                    get: { appState.preferences.notifyOnDeploymentError },
-                    set: {
-                        appState.preferences.notifyOnDeploymentError = $0
-                        appState.savePreferences()
-                    }
-                ))
+                Divider()
+                SettingsToggleRow(
+                    title: "Deployment error",
+                    isOn: Binding(
+                        get: { appState.preferences.notifyOnDeploymentError },
+                        set: {
+                            appState.preferences.notifyOnDeploymentError = $0
+                            appState.savePreferences()
+                        }
+                    )
+                )
                 .disabled(!appState.preferences.vercelNotificationsEnabled)
             }
         }
@@ -303,36 +410,48 @@ struct SettingsView: View {
     @ViewBuilder
     private var circleCITab: some View {
         if appState.hasCircleCIToken {
-            VStack(alignment: .leading, spacing: 20) {
-                SettingsCard("Account", systemImage: "person.crop.circle") {
-                    SettingsAccountField(
+            VStack(alignment: .leading, spacing: 28) {
+                SettingsSection(
+                    title: "Account",
+                    subtitle: "CircleCI connection details.",
+                    systemImage: "person.crop.circle"
+                ) {
+                    SettingsValueRow(
                         label: "Connected account",
                         value: appState.currentUser?.login ?? appState.currentUser?.name ?? "Unknown"
                     )
-                    SettingsAccountField(
+                    Divider()
+                    SettingsValueRow(
                         label: "Masked token",
                         value: KeychainService.shared.maskedCircleCIToken() ?? "Unavailable"
                     )
                 }
 
-                SettingsCard("Quick Links", systemImage: "link") {
+                SettingsSection(
+                    title: "Quick Links",
+                    subtitle: "Open CircleCI account resources.",
+                    systemImage: "link"
+                ) {
                     IntegrationHelpLinkRow(
                         title: "Open CircleCI token page",
                         destination: IntegrationHelpLinks.circleCITokenPage
                     )
+                    Divider()
                     IntegrationHelpLinkRow(
                         title: "View CircleCI token setup guide",
                         destination: IntegrationHelpLinks.circleCIDocs
                     )
                 }
 
-                SettingsCard("Watched Projects", systemImage: "arrow.triangle.branch") {
+                SettingsSection(
+                    title: "Watched Projects",
+                    subtitle: "Branches you want in the menu bar.",
+                    systemImage: "arrow.triangle.branch"
+                ) {
                     if appState.preferences.watchedProjects.isEmpty {
-                        Text("No CircleCI projects are being watched yet.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        SettingsTextRow("No CircleCI projects are being watched yet.")
                     } else {
-                        ForEach(appState.preferences.watchedProjects) { project in
+                        ForEach(Array(appState.preferences.watchedProjects.enumerated()), id: \.element.id) { index, project in
                             WatchedProjectRow(
                                 project: project,
                                 onUpdate: { updated in
@@ -343,7 +462,7 @@ struct SettingsView: View {
                                 }
                             )
 
-                            if project.id != appState.preferences.watchedProjects.last?.id {
+                            if index < appState.preferences.watchedProjects.count - 1 {
                                 Divider()
                             }
                         }
@@ -351,24 +470,25 @@ struct SettingsView: View {
 
                     Divider()
 
-                    HStack(spacing: 10) {
-                        Button("Choose CircleCI Projects...") {
+                    SettingsButtonStrip {
+                        Button("Choose CircleCI Projects…") {
                             presentCircleCIProjectSelection(refreshProjects: false)
                         }
-                        .buttonStyle(.link)
+                        .buttonStyle(.bordered)
 
-                        Button {
+                        Button("Refresh Followed Projects") {
                             presentCircleCIProjectSelection(refreshProjects: true)
-                        } label: {
-                            Label("Refresh Followed Projects", systemImage: "arrow.clockwise")
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.small)
                     }
                 }
 
-                SettingsCard("Actions", systemImage: "key") {
-                    HStack(spacing: 12) {
+                SettingsSection(
+                    title: "Actions",
+                    subtitle: "Token and account actions.",
+                    systemImage: "key"
+                ) {
+                    SettingsButtonStrip {
                         Button("Change API Token") {
                             appState.changeToken()
                             dismiss()
@@ -382,13 +502,13 @@ struct SettingsView: View {
                             dismiss()
                         }
                         .buttonStyle(.bordered)
-                        .foregroundStyle(.red)
+                        .tint(.red)
                     }
                 }
             }
         } else {
-            VStack(alignment: .leading, spacing: 20) {
-                SettingsEmptyStateCard(
+            VStack(alignment: .leading, spacing: 28) {
+                SettingsEmptyStateSection(
                     title: "CircleCI is not connected",
                     message: "Connect your CircleCI token to watch builds and approval jobs.",
                     buttonTitle: "Open CircleCI Setup",
@@ -400,11 +520,16 @@ struct SettingsView: View {
                     }
                 )
 
-                SettingsCard("Quick Links", systemImage: "link") {
+                SettingsSection(
+                    title: "Quick Links",
+                    subtitle: "Open CircleCI account resources.",
+                    systemImage: "link"
+                ) {
                     IntegrationHelpLinkRow(
                         title: "Open CircleCI token page",
                         destination: IntegrationHelpLinks.circleCITokenPage
                     )
+                    Divider()
                     IntegrationHelpLinkRow(
                         title: "View CircleCI token setup guide",
                         destination: IntegrationHelpLinks.circleCIDocs
@@ -417,40 +542,53 @@ struct SettingsView: View {
     @ViewBuilder
     private var vercelTab: some View {
         if appState.hasVercelToken {
-            VStack(alignment: .leading, spacing: 20) {
-                SettingsCard("Account", systemImage: "person.crop.circle.badge.checkmark") {
-                    SettingsAccountField(
+            VStack(alignment: .leading, spacing: 28) {
+                SettingsSection(
+                    title: "Account",
+                    subtitle: "Vercel connection details.",
+                    systemImage: "person.crop.circle.badge.checkmark"
+                ) {
+                    SettingsValueRow(
                         label: "Connected account",
                         value: appState.vercelUser?.username ?? appState.vercelUser?.email ?? "Unknown"
                     )
-                    SettingsAccountField(
+                    Divider()
+                    SettingsValueRow(
                         label: "Masked token",
                         value: KeychainService.shared.maskedVercelToken() ?? "Unavailable"
                     )
 
                     if let teamId = appState.preferences.selectedVercelTeamId, !teamId.isEmpty {
-                        SettingsAccountField(label: "Team scope", value: teamId)
+                        Divider()
+                        SettingsValueRow(label: "Team scope", value: teamId)
                     }
                 }
 
-                SettingsCard("Quick Links", systemImage: "link") {
+                SettingsSection(
+                    title: "Quick Links",
+                    subtitle: "Open Vercel account resources.",
+                    systemImage: "link"
+                ) {
                     IntegrationHelpLinkRow(
                         title: "Open Vercel token page",
                         destination: IntegrationHelpLinks.vercelTokenPage
                     )
+                    Divider()
                     IntegrationHelpLinkRow(
                         title: "View Vercel token setup guide",
                         destination: IntegrationHelpLinks.vercelDocs
                     )
                 }
 
-                SettingsCard("Watched Projects", systemImage: "triangle.fill") {
+                SettingsSection(
+                    title: "Watched Projects",
+                    subtitle: "Deployments you want in the menu bar.",
+                    systemImage: "triangle.fill"
+                ) {
                     if appState.preferences.watchedVercelProjects.isEmpty {
-                        Text("No Vercel projects are being watched yet.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        SettingsTextRow("No Vercel projects are being watched yet.")
                     } else {
-                        ForEach(appState.preferences.watchedVercelProjects) { project in
+                        ForEach(Array(appState.preferences.watchedVercelProjects.enumerated()), id: \.element.id) { index, project in
                             WatchedVercelProjectRow(
                                 project: project,
                                 onUpdate: { updated in
@@ -461,7 +599,7 @@ struct SettingsView: View {
                                 }
                             )
 
-                            if project.id != appState.preferences.watchedVercelProjects.last?.id {
+                            if index < appState.preferences.watchedVercelProjects.count - 1 {
                                 Divider()
                             }
                         }
@@ -469,23 +607,31 @@ struct SettingsView: View {
 
                     Divider()
 
-                    Button("Add Vercel Projects...") {
-                        showingVercelOnboarding = true
+                    SettingsButtonStrip {
+                        Button("Add Vercel Projects…") {
+                            showingVercelOnboarding = true
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.link)
                 }
 
-                SettingsCard("Actions", systemImage: "bolt.horizontal") {
-                    Button("Disconnect Vercel") {
-                        appState.disconnectVercel()
+                SettingsSection(
+                    title: "Actions",
+                    subtitle: "Connection actions.",
+                    systemImage: "bolt.horizontal"
+                ) {
+                    SettingsButtonStrip {
+                        Button("Disconnect Vercel") {
+                            appState.disconnectVercel()
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
                     }
-                    .buttonStyle(.bordered)
-                    .foregroundStyle(.red)
                 }
             }
         } else {
-            VStack(alignment: .leading, spacing: 20) {
-                SettingsEmptyStateCard(
+            VStack(alignment: .leading, spacing: 28) {
+                SettingsEmptyStateSection(
                     title: "Vercel is not connected",
                     message: "Connect your Vercel account to watch preview and deployment status.",
                     buttonTitle: "Connect Vercel",
@@ -494,11 +640,16 @@ struct SettingsView: View {
                     }
                 )
 
-                SettingsCard("Quick Links", systemImage: "link") {
+                SettingsSection(
+                    title: "Quick Links",
+                    subtitle: "Open Vercel account resources.",
+                    systemImage: "link"
+                ) {
                     IntegrationHelpLinkRow(
                         title: "Open Vercel token page",
                         destination: IntegrationHelpLinks.vercelTokenPage
                     )
+                    Divider()
                     IntegrationHelpLinkRow(
                         title: "View Vercel token setup guide",
                         destination: IntegrationHelpLinks.vercelDocs
@@ -509,21 +660,41 @@ struct SettingsView: View {
     }
 
     private var aboutTab: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            AttributionCard()
-
-            SettingsCard("Build", systemImage: "shippingbox") {
-                SettingsAccountField(label: "Version", value: appVersion)
-                SettingsAccountField(label: "Platform", value: "macOS 14+")
-                SettingsAccountField(label: "Integrations", value: "CircleCI and Vercel")
+        VStack(alignment: .leading, spacing: 28) {
+            SettingsSection(
+                title: "About",
+                subtitle: "App details and credits.",
+                systemImage: "heart.text.square"
+            ) {
+                SettingsTextRow("Made by Anuj Sharma.")
+                Divider()
+                SettingsTextRow("Build Notifier keeps CircleCI approvals, build status, and Vercel deployments visible in the menu bar.")
             }
 
-            SettingsCard("Actions", systemImage: "power") {
-                Button("Quit Build Notifier") {
-                    NSApplication.shared.terminate(nil)
+            SettingsSection(
+                title: "Build",
+                subtitle: "Version information.",
+                systemImage: "shippingbox"
+            ) {
+                SettingsValueRow(label: "Version", value: appVersion)
+                Divider()
+                SettingsValueRow(label: "Platform", value: "macOS 14+")
+                Divider()
+                SettingsValueRow(label: "Integrations", value: "CircleCI and Vercel")
+            }
+
+            SettingsSection(
+                title: "Actions",
+                subtitle: "Application actions.",
+                systemImage: "power"
+            ) {
+                SettingsButtonStrip {
+                    Button("Quit Build Notifier") {
+                        NSApplication.shared.terminate(nil)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
                 }
-                .buttonStyle(.bordered)
-                .foregroundStyle(.red)
             }
         }
     }
@@ -546,158 +717,324 @@ struct SettingsView: View {
             NSApplication.shared.activate(ignoringOtherApps: true)
         }
     }
+
+    private var integrationCount: Int {
+        [appState.hasCircleCIToken, appState.hasVercelToken].filter { $0 }.count
+    }
+
+    private var watchedItemCount: Int {
+        appState.preferences.watchedProjects.count + appState.preferences.watchedVercelProjects.count
+    }
+
+    private var refreshIntervalLabel: String {
+        switch appState.preferences.pollingIntervalSeconds {
+        case 30: return "30s"
+        case 60: return "60s"
+        case 120: return "2m"
+        case 300: return "5m"
+        default: return "\(appState.preferences.pollingIntervalSeconds)s"
+        }
+    }
 }
 
-struct SettingsCard<Content: View>: View {
+private struct SidebarMetric: View {
     let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(AppChrome.textMuted)
+
+            Text(value)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(AppChrome.text)
+        }
+    }
+}
+
+private struct SidebarTabButton: View {
+    let tab: SettingsTab
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                SettingsRowIcon(systemImage: tab.systemImage)
+                    .foregroundStyle(isSelected ? AppChrome.accent : AppChrome.textMuted)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tab.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppChrome.text)
+
+                    Text(tab.eyebrow)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(AppChrome.textMuted)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(isSelected ? AppChrome.accentSoft : Color.clear)
+            .overlay {
+                RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous)
+                    .stroke(isSelected ? AppChrome.focus : Color.clear, lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct SidebarStatusRow: View {
+    let title: String
+    let isActive: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(isActive ? .green : AppChrome.separator)
+                .frame(width: 8, height: 8)
+
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppChrome.text)
+
+            Spacer()
+
+            Text(isActive ? "On" : "Off")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(AppChrome.textMuted)
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 8)
+    }
+}
+
+private struct SettingsSection<Content: View>: View {
+    let title: String
+    let subtitle: String
     let systemImage: String
     @ViewBuilder let content: Content
 
-    init(_ title: String, systemImage: String, @ViewBuilder content: () -> Content) {
+    init(title: String, subtitle: String, systemImage: String, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.subtitle = subtitle
         self.systemImage = systemImage
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(title, systemImage: systemImage)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                SettingsRowIcon(systemImage: systemImage)
 
-            VStack(alignment: .leading, spacing: 12) {
-                content
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(AppChrome.text)
+
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppChrome.textMuted)
+                }
+
+                Spacer()
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(14)
+            .padding(.bottom, 12)
+
+            VStack(spacing: 0) {
+                Divider()
+                content
+                Divider()
+            }
         }
     }
 }
 
-struct SettingsHeroCard: View {
+private struct SettingsRowIcon: View {
+    let systemImage: String
+
     var body: some View {
-        HStack(spacing: 14) {
-            AppBrandIcon(size: 58)
+        Image(systemName: systemImage)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(AppChrome.textMuted)
+            .frame(width: 18, height: 18)
+    }
+}
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Build Notifier")
-                    .font(.title3)
-                    .fontWeight(.semibold)
+private struct SettingsToggleRow<Trailing: View>: View {
+    let title: String
+    @Binding var isOn: Bool
+    @ViewBuilder var trailing: Trailing
 
-                Text("Monitor build health, approvals, and deployments without living in browser tabs.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+    init(title: String, isOn: Binding<Bool>, @ViewBuilder trailing: () -> Trailing = { EmptyView() }) {
+        self.title = title
+        self._isOn = isOn
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppChrome.text)
 
             Spacer(minLength: 0)
+
+            trailing
+
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(CompactSwitchToggleStyle())
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(nsColor: .controlBackgroundColor),
-                            Color.accentColor.opacity(0.08)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }
 
-struct SettingsPill: View {
+private struct SettingsPickerRow<Selection: View>: View {
     let title: String
-    let value: String
+    @ViewBuilder let selection: Selection
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 12) {
             Text(title)
-            Spacer()
-            Text(value)
-                .fontWeight(.semibold)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppChrome.text)
+
+            Spacer(minLength: 0)
+
+            selection
         }
-        .font(.caption)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }
 
-struct SettingsAccountField: View {
+private struct SettingsValueRow: View {
     let label: String
     let value: String
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
             Text(label)
-                .foregroundStyle(.secondary)
-            Spacer()
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(AppChrome.textMuted)
+
+            Spacer(minLength: 12)
+
             Text(value)
-                .fontWeight(.medium)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppChrome.text)
+                .lineLimit(1)
+                .truncationMode(.middle)
                 .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
+                .frame(maxWidth: 420, alignment: .trailing)
         }
-        .font(.subheadline)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }
 
-struct SettingsEmptyStateCard: View {
+private struct SettingsTextRow: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 13, weight: .regular))
+            .foregroundStyle(AppChrome.textMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+    }
+}
+
+private struct SettingsButtonStrip<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        HStack(spacing: 10) {
+            content
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
+private struct SettingsEmptyStateSection: View {
     let title: String
     let message: String
     let buttonTitle: String
     let action: () -> Void
 
     var body: some View {
-        VStack(spacing: 14) {
-            AppBrandIcon(size: 64)
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(AppChrome.text)
 
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(.headline)
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 360)
-            }
+            Text(message)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(AppChrome.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
 
             Button(buttonTitle) {
                 action()
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.small)
         }
-        .frame(maxWidth: .infinity, minHeight: 380)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(AppChrome.separator)
+                .frame(height: 1)
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppChrome.separator)
+                .frame(height: 1)
+        }
     }
 }
 
-struct AttributionCard: View {
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "heart.fill")
-                .foregroundStyle(.pink)
+private struct CompactSwitchToggleStyle: ToggleStyle {
+    @Environment(\.isEnabled) private var isEnabled
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Made with love by Anuj Sharma")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-
-                Text("Thanks for using Build Notifier.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 0)
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            RoundedRectangle(cornerRadius: 999, style: .continuous)
+                .fill(configuration.isOn ? AppChrome.accent : AppChrome.surfaceMuted)
+                .frame(width: 34, height: 20)
+                .overlay(alignment: configuration.isOn ? .trailing : .leading) {
+                    Circle()
+                        .fill(AppChrome.surface)
+                        .frame(width: 14, height: 14)
+                        .padding(3)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 999, style: .continuous)
+                        .stroke(configuration.isOn ? AppChrome.accent : AppChrome.border, lineWidth: 1)
+                }
+                .opacity(isEnabled ? 1 : 0.52)
         }
-        .padding(16)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(14)
+        .buttonStyle(.plain)
+        .accessibilityValue(configuration.isOn ? "On" : "Off")
     }
 }
 
@@ -707,7 +1044,7 @@ struct WatchedProjectRow: View {
     let onRemove: () -> Void
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
             Toggle("", isOn: Binding(
                 get: { project.isEnabled },
                 set: {
@@ -717,11 +1054,23 @@ struct WatchedProjectRow: View {
                 }
             ))
             .labelsHidden()
+            .toggleStyle(CompactSwitchToggleStyle())
 
-            Text(project.displayName)
-                .font(.subheadline)
+            SettingsRowIcon(systemImage: "arrow.triangle.branch")
 
-            Spacer()
+            VStack(alignment: .leading, spacing: 3) {
+                Text(project.displayName)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(AppChrome.text)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text(project.followMode.displayName)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(AppChrome.textMuted)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Picker("", selection: Binding(
                 get: { project.followMode },
@@ -735,7 +1084,8 @@ struct WatchedProjectRow: View {
                     Text(mode.displayName).tag(mode)
                 }
             }
-            .frame(width: 130)
+            .labelsHidden()
+            .frame(width: 138)
 
             Button {
                 onRemove()
@@ -744,8 +1094,10 @@ struct WatchedProjectRow: View {
                     .foregroundStyle(.red)
             }
             .buttonStyle(.plain)
+            .help("Remove project")
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }
 
@@ -755,7 +1107,7 @@ struct WatchedVercelProjectRow: View {
     let onRemove: () -> Void
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
             Toggle("", isOn: Binding(
                 get: { project.isEnabled },
                 set: {
@@ -765,15 +1117,23 @@ struct WatchedVercelProjectRow: View {
                 }
             ))
             .labelsHidden()
+            .toggleStyle(CompactSwitchToggleStyle())
 
-            Image(systemName: "triangle.fill")
-                .font(.system(size: 10))
-                .foregroundColor(.primary)
+            SettingsRowIcon(systemImage: "triangle.fill")
 
-            Text(project.displayName)
-                .font(.subheadline)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(project.displayName)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(AppChrome.text)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
 
-            Spacer()
+                Text(project.followMode.displayName)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(AppChrome.textMuted)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Picker("", selection: Binding(
                 get: { project.followMode },
@@ -787,7 +1147,8 @@ struct WatchedVercelProjectRow: View {
                     Text(mode.displayName).tag(mode)
                 }
             }
-            .frame(width: 130)
+            .labelsHidden()
+            .frame(width: 138)
 
             Button {
                 onRemove()
@@ -796,7 +1157,9 @@ struct WatchedVercelProjectRow: View {
                     .foregroundStyle(.red)
             }
             .buttonStyle(.plain)
+            .help("Remove project")
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }
