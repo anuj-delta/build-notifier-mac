@@ -5,7 +5,7 @@ set -e
 
 APP_NAME="Build Notifier"
 BUNDLE_ID="com.buildnotifier.circleci"
-VERSION="1.0.1"
+VERSION="1.0.2"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 ENTITLEMENTS_FILE="entitlements.plist"
 ICONSET_DIR="BuildNotifier/Assets/AppIcon.iconset"
