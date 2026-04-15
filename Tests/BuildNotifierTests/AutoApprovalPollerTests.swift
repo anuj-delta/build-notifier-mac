@@ -1,10 +1,13 @@
 import XCTest
 @testable import BuildNotifier
+@testable import BuildNotifierCore
 
 @MainActor
 final class AutoApprovalPollerTests: XCTestCase {
     override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: "UserPreferences")
+        UserDefaults.standard.removeObject(forKey: BuildNotifierSharedDefaults.userPreferencesKey)
+        BuildNotifierSharedDefaults.sharedDefaults().removeObject(forKey: BuildNotifierSharedDefaults.userPreferencesKey)
+        BuildNotifierSharedDefaults.legacySharedDefaults()?.removeObject(forKey: BuildNotifierSharedDefaults.userPreferencesKey)
         super.tearDown()
     }
 

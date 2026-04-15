@@ -1,4 +1,5 @@
 import Foundation
+import BuildNotifierCore
 
 // MARK: - Follow Mode
 
@@ -98,10 +99,10 @@ struct UserPreferences: Codable {
     
     // MARK: - Persistence
     
-    private static let key = "UserPreferences"
+    private static let key = BuildNotifierSharedDefaults.userPreferencesKey
     
     static func load() -> UserPreferences {
-        guard let data = UserDefaults.standard.data(forKey: key) else {
+        guard let data = BuildNotifierSharedDefaults.loadData(forKey: key) else {
             return .default
         }
         
@@ -139,6 +140,6 @@ struct UserPreferences: Codable {
     
     func save() {
         guard let data = try? JSONEncoder().encode(self) else { return }
-        UserDefaults.standard.set(data, forKey: Self.key)
+        BuildNotifierSharedDefaults.saveData(data, forKey: Self.key)
     }
 }

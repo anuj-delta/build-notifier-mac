@@ -1,8 +1,16 @@
 import XCTest
 @testable import BuildNotifier
+@testable import BuildNotifierCore
 
 @MainActor
 final class BuildPollerTests: XCTestCase {
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: BuildNotifierSharedDefaults.userPreferencesKey)
+        BuildNotifierSharedDefaults.sharedDefaults().removeObject(forKey: BuildNotifierSharedDefaults.userPreferencesKey)
+        BuildNotifierSharedDefaults.legacySharedDefaults()?.removeObject(forKey: BuildNotifierSharedDefaults.userPreferencesKey)
+        super.tearDown()
+    }
+
     func testMineModePreservesPreviouslyVisibleWorkflowWhenActorLookupBecomesUnavailable() async throws {
         let firstPollBuilds = [
             makeBuild(
@@ -195,6 +203,7 @@ final class BuildPollerTests: XCTestCase {
 
     private func makeAppState(poller: BuildPoller, followMode: FollowMode) -> AppState {
         let appState = AppState(poller: poller, vercelPoller: VercelPoller(), autoApprovalPoller: AutoApprovalPoller())
+        appState.preferences = .default
         appState.currentUser = User(
             name: "Anuj Sharma",
             login: "anuj-delta",

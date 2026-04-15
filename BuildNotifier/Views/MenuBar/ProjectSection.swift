@@ -1,4 +1,5 @@
 import SwiftUI
+import BuildNotifierCore
 
 struct ProjectSection: View {
     let project: WatchedProject

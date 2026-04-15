@@ -6,6 +6,7 @@ Build Notifier is a native macOS menu bar app for tracking CircleCI builds and V
 
 - Watches CircleCI projects for passing, failing, running, and approval-required workflows
 - Watches Vercel projects for deployment ready and deployment error states
+- Exposes a local read-only MCP helper that reuses the saved CircleCI login
 - Sends native macOS notifications with optional sound
 - Supports launch at login and per-project watch preferences
 - Stores CircleCI and Vercel tokens locally for repeat use
@@ -106,7 +107,41 @@ Important paths:
 - `BuildNotifier/Views/` for SwiftUI screens
 - `BuildNotifier/Services/` for CircleCI, Vercel, notifications, and polling
 - `BuildNotifier/State/AppState.swift` for app-wide state
+- `BuildNotifierMCP/` for the bundled local MCP server executable
 - `build-app.sh` and `build-dmg.sh` for packaging
+
+## Use as an MCP Server
+
+Build Notifier can act as a local read-only MCP server for CircleCI after a user installs the app and signs in with a CircleCI token.
+
+The bundled helper path in a packaged app is:
+
+```text
+/Applications/Build Notifier.app/Contents/Helpers/BuildNotifierMCP
+```
+
+The Settings screen shows the exact helper path on the current machine and includes a copyable config snippet.
+
+Example MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "build-notifier": {
+      "command": "/Applications/Build Notifier.app/Contents/Helpers/BuildNotifierMCP"
+    }
+  }
+}
+```
+
+The helper exposes two read-only tools:
+
+- `list_projects_by_activity`
+- `get_build_details`
+
+The helper reuses the saved CircleCI login from Build Notifier, so users do not need to enter their token again in the MCP client.
+
+Reference: [Connect to local MCP servers](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
 
 ## Notes
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import BuildNotifierCore
 
 struct ProjectSelectorView: View {
     @Bindable var appState: AppState

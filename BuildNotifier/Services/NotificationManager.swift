@@ -1,6 +1,7 @@
 import Foundation
 import UserNotifications
 import AppKit
+import BuildNotifierCore
 
 // MARK: - Notification Manager
 

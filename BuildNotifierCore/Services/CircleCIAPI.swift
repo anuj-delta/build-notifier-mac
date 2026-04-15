@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - API Errors
 
-enum CircleCIError: Error, LocalizedError {
+public enum CircleCIError: Error, LocalizedError {
     case invalidURL
     case invalidResponse
     case httpError(Int, String?)
@@ -11,7 +11,7 @@ enum CircleCIError: Error, LocalizedError {
     case unauthorized
     case rateLimited
     
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidURL:
             return "Invalid URL"
@@ -33,8 +33,8 @@ enum CircleCIError: Error, LocalizedError {
 
 // MARK: - CircleCI API Client
 
-actor CircleCIAPI {
-    static let shared = CircleCIAPI()
+public actor CircleCIAPI {
+    public static let shared = CircleCIAPI()
     
     private let baseURLv1 = "https://circleci.com/api/v1.1"
     private let baseURLv2 = "https://circleci.com/api/v2"
@@ -45,22 +45,22 @@ actor CircleCIAPI {
     
     // MARK: - Token Management
     
-    func setToken(_ token: String) {
+    public func setToken(_ token: String) {
         self.token = token
     }
     
-    func clearToken() {
+    public func clearToken() {
         self.token = nil
     }
     
-    func loadTokenFromKeychain() {
+    public func loadTokenFromKeychain() {
         self.token = try? KeychainService.shared.getToken()
     }
     
     // MARK: - API v1.1 Endpoints
     
     /// Validate token by fetching user info
-    func validateToken() async throws -> User {
+    public func validateToken() async throws -> User {
         return try await request(
             url: "\(baseURLv1)/me",
             method: "GET"
@@ -68,7 +68,7 @@ actor CircleCIAPI {
     }
     
     /// Get all followed projects (projects with CircleCI configured that user follows)
-    func getProjects() async throws -> [Project] {
+    public func getProjects() async throws -> [Project] {
         let projects: [Project] = try await request(
             url: "\(baseURLv1)/projects",
             method: "GET"
@@ -77,7 +77,7 @@ actor CircleCIAPI {
     }
     
     /// Get recent builds for a project
-    func getBuilds(
+    public func getBuilds(
         vcsType: String,
         orgName: String,
         repoName: String,
@@ -90,9 +90,22 @@ actor CircleCIAPI {
         }
         return try await request(url: url, method: "GET")
     }
+
+    /// Get a specific build for a project
+    public func getBuild(
+        vcsType: String,
+        orgName: String,
+        repoName: String,
+        buildNum: Int
+    ) async throws -> Build {
+        try await request(
+            url: "\(baseURLv1)/project/\(vcsType)/\(orgName)/\(repoName)/\(buildNum)",
+            method: "GET"
+        )
+    }
     
     /// Retry a failed build
-    func retryBuild(
+    public func retryBuild(
         vcsType: String,
         orgName: String,
         repoName: String,
@@ -105,7 +118,7 @@ actor CircleCIAPI {
     }
     
     /// Cancel a running build
-    func cancelBuild(
+    public func cancelBuild(
         vcsType: String,
         orgName: String,
         repoName: String,
@@ -118,7 +131,7 @@ actor CircleCIAPI {
     }
     
     /// Get all recent builds across followed projects
-    func getRecentBuilds(limit: Int = 30) async throws -> [Build] {
+    public func getRecentBuilds(limit: Int = 30) async throws -> [Build] {
         return try await request(
             url: "\(baseURLv1)/recent-builds?limit=\(limit)&shallow=true",
             method: "GET"
@@ -128,7 +141,7 @@ actor CircleCIAPI {
     // MARK: - API v2 Endpoints
     
     /// Get jobs for a workflow (to check for pending approvals)
-    func getWorkflowJobs(workflowId: String) async throws -> [WorkflowJob] {
+    public func getWorkflowJobs(workflowId: String) async throws -> [WorkflowJob] {
         let response: WorkflowJobsResponse = try await request(
             url: "\(baseURLv2)/workflow/\(workflowId)/job",
             method: "GET"
@@ -137,7 +150,7 @@ actor CircleCIAPI {
     }
 
     /// Get workflow details, including the owning pipeline ID.
-    func getWorkflow(workflowId: String) async throws -> WorkflowDetails {
+    public func getWorkflow(workflowId: String) async throws -> WorkflowDetails {
         try await request(
             url: "\(baseURLv2)/workflow/\(workflowId)",
             method: "GET"
@@ -145,7 +158,7 @@ actor CircleCIAPI {
     }
 
     /// Get pipeline details, including the trigger actor.
-    func getPipeline(pipelineId: String) async throws -> PipelineDetails {
+    public func getPipeline(pipelineId: String) async throws -> PipelineDetails {
         try await request(
             url: "\(baseURLv2)/pipeline/\(pipelineId)",
             method: "GET"
@@ -153,7 +166,7 @@ actor CircleCIAPI {
     }
     
     /// Approve a pending approval job
-    func approveJob(workflowId: String, approvalRequestId: String) async throws {
+    public func approveJob(workflowId: String, approvalRequestId: String) async throws {
         let _: EmptyResponse = try await request(
             url: "\(baseURLv2)/workflow/\(workflowId)/approve/\(approvalRequestId)",
             method: "POST"

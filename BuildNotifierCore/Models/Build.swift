@@ -2,30 +2,76 @@ import Foundation
 
 // MARK: - Build Model (from CircleCI API v1.1)
 
-struct Build: Codable, Identifiable, Equatable {
-    let vcsUrl: String?
-    let buildUrl: String?
-    let buildNum: Int
-    let branch: String?
-    let vcsRevision: String?
-    let committerName: String?
-    let committerEmail: String?
-    let subject: String?
-    let body: String?
-    let why: String?
-    let queuedAt: String?
-    let startTime: String?
-    let stopTime: String?
-    let buildTimeMillis: Int?
-    let username: String?
-    let reponame: String?
-    let lifecycle: String?
-    let outcome: String?
-    let status: String?
-    let retryOf: Int?
-    let workflows: WorkflowInfo?
+public struct Build: Codable, Identifiable, Equatable {
+    public let vcsUrl: String?
+    public let buildUrl: String?
+    public let buildNum: Int
+    public let branch: String?
+    public let vcsRevision: String?
+    public let committerName: String?
+    public let committerEmail: String?
+    public let subject: String?
+    public let body: String?
+    public let why: String?
+    public let queuedAt: String?
+    public let startTime: String?
+    public let stopTime: String?
+    public let buildTimeMillis: Int?
+    public let username: String?
+    public let reponame: String?
+    public let lifecycle: String?
+    public let outcome: String?
+    public let status: String?
+    public let retryOf: Int?
+    public let workflows: WorkflowInfo?
     
-    var id: String { "\(username ?? "")/\(reponame ?? "")/\(buildNum)" }
+    public var id: String { "\(username ?? "")/\(reponame ?? "")/\(buildNum)" }
+
+    public init(
+        vcsUrl: String?,
+        buildUrl: String?,
+        buildNum: Int,
+        branch: String?,
+        vcsRevision: String?,
+        committerName: String?,
+        committerEmail: String?,
+        subject: String?,
+        body: String?,
+        why: String?,
+        queuedAt: String?,
+        startTime: String?,
+        stopTime: String?,
+        buildTimeMillis: Int?,
+        username: String?,
+        reponame: String?,
+        lifecycle: String?,
+        outcome: String?,
+        status: String?,
+        retryOf: Int?,
+        workflows: WorkflowInfo?
+    ) {
+        self.vcsUrl = vcsUrl
+        self.buildUrl = buildUrl
+        self.buildNum = buildNum
+        self.branch = branch
+        self.vcsRevision = vcsRevision
+        self.committerName = committerName
+        self.committerEmail = committerEmail
+        self.subject = subject
+        self.body = body
+        self.why = why
+        self.queuedAt = queuedAt
+        self.startTime = startTime
+        self.stopTime = stopTime
+        self.buildTimeMillis = buildTimeMillis
+        self.username = username
+        self.reponame = reponame
+        self.lifecycle = lifecycle
+        self.outcome = outcome
+        self.status = status
+        self.retryOf = retryOf
+        self.workflows = workflows
+    }
     
     enum CodingKeys: String, CodingKey {
         case vcsUrl = "vcs_url"
@@ -51,17 +97,23 @@ struct Build: Codable, Identifiable, Equatable {
         case workflows
     }
     
-    static func == (lhs: Build, rhs: Build) -> Bool {
+    public static func == (lhs: Build, rhs: Build) -> Bool {
         lhs.buildNum == rhs.buildNum && 
         lhs.username == rhs.username && 
         lhs.reponame == rhs.reponame
     }
 }
 
-struct WorkflowInfo: Codable, Equatable {
-    let jobName: String?
-    let workflowId: String?
-    let workflowName: String?
+public struct WorkflowInfo: Codable, Equatable {
+    public let jobName: String?
+    public let workflowId: String?
+    public let workflowName: String?
+
+    public init(jobName: String?, workflowId: String?, workflowName: String?) {
+        self.jobName = jobName
+        self.workflowId = workflowId
+        self.workflowName = workflowName
+    }
     
     enum CodingKeys: String, CodingKey {
         case jobName = "job_name"
@@ -72,7 +124,7 @@ struct WorkflowInfo: Codable, Equatable {
 
 // MARK: - Build Status
 
-enum BuildStatus: String {
+public enum BuildStatus: String {
     case success
     case fixed
     case failed
@@ -89,11 +141,11 @@ enum BuildStatus: String {
     case onHold = "on_hold"
     case unknown
     
-    init(from status: String?) {
+    public init(from status: String?) {
         self = BuildStatus(rawValue: Self.normalize(status)) ?? .unknown
     }
     
-    init(status: String?, outcome: String?, lifecycle: String?) {
+    public init(status: String?, outcome: String?, lifecycle: String?) {
         let normalizedOutcome = Self.normalize(outcome)
         let normalizedLifecycle = Self.normalize(lifecycle)
         let normalizedStatus = Self.normalize(status)
@@ -115,23 +167,23 @@ enum BuildStatus: String {
         (value ?? "").lowercased().replacingOccurrences(of: "cancelled", with: "canceled")
     }
     
-    var isSuccess: Bool {
+    public var isSuccess: Bool {
         self == .success || self == .fixed
     }
     
-    var isFailure: Bool {
+    public var isFailure: Bool {
         self == .failed || self == .timedout || self == .infrastructureFail
     }
     
-    var isRunning: Bool {
+    public var isRunning: Bool {
         self == .running || self == .queued || self == .scheduled || self == .notRunning
     }
     
-    var isPending: Bool {
+    public var isPending: Bool {
         self == .onHold
     }
 
-    var isTerminal: Bool {
+    public var isTerminal: Bool {
         switch self {
         case .success, .fixed, .failed, .timedout, .infrastructureFail, .canceled, .retried, .noTests:
             return true
@@ -140,7 +192,7 @@ enum BuildStatus: String {
         }
     }
     
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .success: return "Success"
         case .fixed: return "Fixed"
@@ -160,7 +212,7 @@ enum BuildStatus: String {
         }
     }
     
-    var iconName: String {
+    public var iconName: String {
         switch self {
         case .success, .fixed: return "checkmark.circle.fill"
         case .failed, .timedout, .infrastructureFail: return "xmark.circle.fill"
@@ -172,7 +224,7 @@ enum BuildStatus: String {
         }
     }
     
-    var color: String {
+    public var color: String {
         switch self {
         case .success, .fixed: return "green"
         case .failed, .timedout, .infrastructureFail: return "red"
@@ -187,26 +239,26 @@ enum BuildStatus: String {
 // MARK: - Build Extensions
 
 extension Build {
-    var projectOrganizationName: String? {
+    public var projectOrganizationName: String? {
         username
     }
 
-    var projectRepositoryName: String {
+    public var projectRepositoryName: String {
         reponame ?? "unknown"
     }
 
-    var buildStatus: BuildStatus {
+    public var buildStatus: BuildStatus {
         BuildStatus(status: status, outcome: outcome, lifecycle: lifecycle)
     }
     
-    var projectSlug: String {
+    public var projectSlug: String {
         guard let username = username, let reponame = reponame else {
             return "unknown"
         }
         return "\(username)/\(reponame)"
     }
     
-    var vcsType: String {
+    public var vcsType: String {
         guard let vcsUrl = vcsUrl else { return "gh" }
         if vcsUrl.contains("github.com") {
             return "gh"
@@ -216,7 +268,7 @@ extension Build {
         return "gh"
     }
     
-    var truncatedSubject: String {
+    public var truncatedSubject: String {
         guard let subject = subject else { return "No commit message" }
         if subject.count > 50 {
             return String(subject.prefix(47)) + "..."
@@ -226,19 +278,19 @@ extension Build {
     
     /// Best-effort timestamp for sorting projects by activity.
     /// Prefers `start_time`, then `queued_at`, then `stop_time`.
-    var activityDate: Date? {
+    public var activityDate: Date? {
         if let startTime { return Self.parseISO8601(startTime) }
         if let queuedAt { return Self.parseISO8601(queuedAt) }
         if let stopTime { return Self.parseISO8601(stopTime) }
         return nil
     }
     
-    var workflowUrl: String? {
+    public var workflowUrl: String? {
         guard let workflowId = workflows?.workflowId else { return nil }
         return "https://app.circleci.com/pipelines/workflows/\(workflowId)"
     }
 
-    var autoApproveLabel: String {
+    public var autoApproveLabel: String {
         if let workflowName = workflows?.workflowName, !workflowName.isEmpty {
             return workflowName
         }
@@ -248,7 +300,7 @@ extension Build {
         return "Build #\(buildNum)"
     }
 
-    var relativeTime: String {
+    public var relativeTime: String {
         guard let buildDate = activityDate else {
             return "unknown"
         }

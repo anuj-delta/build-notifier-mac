@@ -13,7 +13,8 @@ ICON_FILE="BuildNotifier/Assets/AppIcon.icns"
 ICON_GENERATOR="scripts/generate-app-icon.swift"
 
 echo "Building BuildNotifier..."
-swift build -c release
+swift build -c release --product BuildNotifier
+swift build -c release --product BuildNotifierMCP
 
 if [ "${REGENERATE_APP_ICON:-0}" = "1" ] && [ -f "$ICON_GENERATOR" ]; then
     echo "Creating icon source set..."
@@ -39,6 +40,7 @@ APP_DIR="$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
+HELPERS_DIR="$CONTENTS_DIR/Helpers"
 
 # Clean up existing bundle
 rm -rf "$APP_DIR"
@@ -46,9 +48,11 @@ rm -rf "$APP_DIR"
 # Create directory structure
 mkdir -p "$MACOS_DIR"
 mkdir -p "$RESOURCES_DIR"
+mkdir -p "$HELPERS_DIR"
 
 # Copy executable
 cp .build/release/BuildNotifier "$MACOS_DIR/"
+cp .build/release/BuildNotifierMCP "$HELPERS_DIR/"
 
 # Copy resources bundle if it exists
 if [ -d ".build/release/BuildNotifier_BuildNotifier.bundle" ]; then

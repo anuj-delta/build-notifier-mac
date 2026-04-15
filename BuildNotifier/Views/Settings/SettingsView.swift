@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import BuildNotifierCore
 
 private enum SettingsTab: String, CaseIterable, Identifiable {
     case general
@@ -444,6 +446,41 @@ struct SettingsView: View {
                 }
 
                 SettingsSection(
+                    title: "MCP Access",
+                    subtitle: "Use the bundled local MCP helper with your saved CircleCI login.",
+                    systemImage: "server.rack"
+                ) {
+                    SettingsValueRow(
+                        label: "Availability",
+                        value: MCPServerIntegration.isBundledHelperAvailable ? "Ready" : "Build the app bundle to enable"
+                    )
+                    Divider()
+                    SettingsCopyableValueRow(
+                        label: "Helper path",
+                        value: MCPServerIntegration.bundledHelperPath ?? "Build the app with ./build-app.sh or ./build-dmg.sh",
+                        buttonTitle: "Copy Path",
+                        isEnabled: MCPServerIntegration.bundledHelperPath != nil
+                    ) {
+                        copyToPasteboard(MCPServerIntegration.bundledHelperPath ?? "")
+                    }
+                    Divider()
+                    SettingsTextRow("Desktop MCP clients can launch the bundled helper directly. Build Notifier reuses the saved CircleCI token, so users only need to sign in once in the app.")
+                    Divider()
+                    SettingsCodeSnippetRow(
+                        title: "MCP client config",
+                        code: MCPServerIntegration.configSnippet,
+                        buttonTitle: "Copy Snippet"
+                    ) {
+                        copyToPasteboard(MCPServerIntegration.configSnippet)
+                    }
+                    Divider()
+                    IntegrationHelpLinkRow(
+                        title: "Read local MCP server setup docs",
+                        destination: IntegrationHelpLinks.mcpLocalServerDocs
+                    )
+                }
+
+                SettingsSection(
                     title: "Watched Projects",
                     subtitle: "Branches you want in the menu bar.",
                     systemImage: "arrow.triangle.branch"
@@ -533,6 +570,19 @@ struct SettingsView: View {
                     IntegrationHelpLinkRow(
                         title: "View CircleCI token setup guide",
                         destination: IntegrationHelpLinks.circleCIDocs
+                    )
+                }
+
+                SettingsSection(
+                    title: "MCP Access",
+                    subtitle: "Build Notifier exposes a local read-only MCP helper after CircleCI is connected.",
+                    systemImage: "server.rack"
+                ) {
+                    SettingsTextRow("Connect CircleCI first, then build the app bundle to use /Applications/Build Notifier.app/Contents/Helpers/BuildNotifierMCP with desktop MCP clients.")
+                    Divider()
+                    IntegrationHelpLinkRow(
+                        title: "Read local MCP server setup docs",
+                        destination: IntegrationHelpLinks.mcpLocalServerDocs
                     )
                 }
             }
@@ -680,7 +730,7 @@ struct SettingsView: View {
                 Divider()
                 SettingsValueRow(label: "Platform", value: "macOS 14+")
                 Divider()
-                SettingsValueRow(label: "Integrations", value: "CircleCI and Vercel")
+                SettingsValueRow(label: "Integrations", value: "CircleCI, Vercel, and MCP")
             }
 
             SettingsSection(
@@ -701,6 +751,11 @@ struct SettingsView: View {
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.2"
+    }
+
+    private func copyToPasteboard(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 
     private func presentCircleCIProjectSelection(refreshProjects: Bool) {
@@ -943,6 +998,41 @@ private struct SettingsValueRow: View {
     }
 }
 
+private struct SettingsCopyableValueRow: View {
+    let label: String
+    let value: String
+    let buttonTitle: String
+    let isEnabled: Bool
+    let onCopy: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Text(label)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(AppChrome.textMuted)
+
+            Spacer(minLength: 12)
+
+            Text(value)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppChrome.text)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+                .frame(maxWidth: 360, alignment: .trailing)
+
+            Button(buttonTitle) {
+                onCopy()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!isEnabled)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
 private struct SettingsTextRow: View {
     let text: String
 
@@ -957,6 +1047,46 @@ private struct SettingsTextRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+    }
+}
+
+private struct SettingsCodeSnippetRow: View {
+    let title: String
+    let code: String
+    let buttonTitle: String
+    let onCopy: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppChrome.text)
+
+            Text(code)
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .foregroundStyle(AppChrome.text)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(AppChrome.surfaceMuted)
+                .overlay {
+                    RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous)
+                        .stroke(AppChrome.border, lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous))
+
+            HStack {
+                Spacer()
+
+                Button(buttonTitle) {
+                    onCopy()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }
 

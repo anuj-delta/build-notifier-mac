@@ -3,13 +3,13 @@ import Security
 
 // MARK: - Keychain Service
 
-enum KeychainError: Error, LocalizedError {
+public enum KeychainError: Error, LocalizedError {
     case duplicateItem
     case itemNotFound
     case unexpectedStatus(OSStatus)
     case invalidData
     
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .duplicateItem:
             return "Item already exists in keychain"
@@ -23,8 +23,8 @@ enum KeychainError: Error, LocalizedError {
     }
 }
 
-final class KeychainService {
-    static let shared = KeychainService()
+public final class KeychainService {
+    public static let shared = KeychainService()
     
     private let service = "com.buildnotifier.circleci"
     private let account = "api_token"
@@ -37,9 +37,9 @@ final class KeychainService {
     // Persist across rebuilds/reinstalls:
     // - `suiteDefaults`: stable domain independent of bundle ID
     // - `standardDefaults`: normal app defaults (still useful when installed in /Applications)
-    private let suiteDefaults = UserDefaults(suiteName: "buildnotifier.circleci.shared") ?? .standard
+    private let suiteDefaults = BuildNotifierSharedDefaults.sharedDefaults()
     private let standardDefaults = UserDefaults.standard
-    private let legacySuiteDefaults = UserDefaults(suiteName: "group.buildnotifier.circleci.shared")
+    private let legacySuiteDefaults = BuildNotifierSharedDefaults.legacySharedDefaults()
     
     // This app is distributed as an ad-hoc signed build in development/internal use.
     // Re-signing changes the code identity and causes repeated Keychain access prompts,
@@ -48,17 +48,17 @@ final class KeychainService {
     
     private init() {}
     
-    func maskedCircleCIToken() -> String? {
+    public func maskedCircleCIToken() -> String? {
         maskedToken(for: fallbackKey)
     }
     
-    func maskedVercelToken() -> String? {
+    public func maskedVercelToken() -> String? {
         maskedToken(for: vercelFallbackKey)
     }
     
     // MARK: - Save Token
     
-    func saveToken(_ token: String) throws {
+    public func saveToken(_ token: String) throws {
         guard let data = token.data(using: .utf8) else {
             throw KeychainError.invalidData
         }
@@ -97,7 +97,7 @@ final class KeychainService {
     
     // MARK: - Get Token
     
-    func getToken() throws -> String {
+    public func getToken() throws -> String {
         // Prefer stable app storage to avoid Keychain prompts for ad-hoc signed builds.
         if let token = suiteDefaults.string(forKey: fallbackKey), !token.isEmpty {
             return token
@@ -150,7 +150,7 @@ final class KeychainService {
     
     // MARK: - Delete Token
     
-    func deleteToken() throws {
+    public func deleteToken() throws {
         // Clear UserDefaults fallback
         suiteDefaults.removeObject(forKey: fallbackKey)
         standardDefaults.removeObject(forKey: fallbackKey)
@@ -176,7 +176,7 @@ final class KeychainService {
     
     // MARK: - Check if Token Exists
     
-    func hasToken() -> Bool {
+    public func hasToken() -> Bool {
         // Prefer UserDefaults checks to avoid keychain prompts / signature issues
         if let token = suiteDefaults.string(forKey: fallbackKey), !token.isEmpty {
             return true
@@ -209,7 +209,7 @@ final class KeychainService {
     
     // MARK: - Vercel Token Methods
     
-    func saveVercelToken(_ token: String) throws {
+    public func saveVercelToken(_ token: String) throws {
         guard let data = token.data(using: .utf8) else {
             throw KeychainError.invalidData
         }
@@ -245,7 +245,7 @@ final class KeychainService {
         }
     }
     
-    func getVercelToken() throws -> String {
+    public func getVercelToken() throws -> String {
         if let token = suiteDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
             return token
         }
@@ -286,7 +286,7 @@ final class KeychainService {
         throw KeychainError.unexpectedStatus(status)
     }
     
-    func deleteVercelToken() throws {
+    public func deleteVercelToken() throws {
         // Clear UserDefaults fallback
         suiteDefaults.removeObject(forKey: vercelFallbackKey)
         standardDefaults.removeObject(forKey: vercelFallbackKey)
@@ -308,7 +308,7 @@ final class KeychainService {
         }
     }
     
-    func hasVercelToken() -> Bool {
+    public func hasVercelToken() -> Bool {
         if let token = suiteDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
             return true
         }

@@ -1,4 +1,5 @@
 import SwiftUI
+import BuildNotifierCore
 
 enum MenuBarTab: String, Hashable {
     case overview
