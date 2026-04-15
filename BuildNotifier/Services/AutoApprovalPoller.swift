@@ -1,4 +1,5 @@
 import Foundation
+import BuildNotifierCore
 import Combine
 
 // MARK: - Auto Approval Poller

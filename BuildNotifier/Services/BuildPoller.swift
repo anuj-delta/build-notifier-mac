@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import BuildNotifierCore
 
 // MARK: - Build Poller
 

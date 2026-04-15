@@ -5,6 +5,7 @@ enum IntegrationHelpLinks {
     static let circleCIDocs = URL(string: "https://circleci.com/docs/guides/permissions-authentication/personal-api-tokens/")!
     static let vercelTokenPage = URL(string: "https://vercel.com/account/settings/tokens")!
     static let vercelDocs = URL(string: "https://vercel.com/guides/how-do-i-use-a-vercel-api-access-token")!
+    static let mcpLocalServerDocs = URL(string: "https://modelcontextprotocol.io/docs/develop/connect-local-servers")!
 }
 
 struct IntegrationHelpLinkRow: View {

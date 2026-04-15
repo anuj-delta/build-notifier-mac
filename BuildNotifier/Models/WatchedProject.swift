@@ -1,4 +1,5 @@
 import Foundation
+import BuildNotifierCore
 
 // MARK: - Follow Mode
 

@@ -1,5 +1,6 @@
 import XCTest
 @testable import BuildNotifier
+@testable import BuildNotifierCore
 
 @MainActor
 final class AutoApprovalPollerTests: XCTestCase {
