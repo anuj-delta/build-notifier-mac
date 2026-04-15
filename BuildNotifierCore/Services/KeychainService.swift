@@ -37,9 +37,9 @@ public final class KeychainService {
     // Persist across rebuilds/reinstalls:
     // - `suiteDefaults`: stable domain independent of bundle ID
     // - `standardDefaults`: normal app defaults (still useful when installed in /Applications)
-    private let suiteDefaults = UserDefaults(suiteName: "buildnotifier.circleci.shared") ?? .standard
+    private let suiteDefaults = BuildNotifierSharedDefaults.sharedDefaults()
     private let standardDefaults = UserDefaults.standard
-    private let legacySuiteDefaults = UserDefaults(suiteName: "group.buildnotifier.circleci.shared")
+    private let legacySuiteDefaults = BuildNotifierSharedDefaults.legacySharedDefaults()
     
     // This app is distributed as an ad-hoc signed build in development/internal use.
     // Re-signing changes the code identity and causes repeated Keychain access prompts,

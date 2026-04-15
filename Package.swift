@@ -23,6 +23,7 @@ let package = Package(
                 "Models/Pipeline.swift",
                 "Models/Project.swift",
                 "Models/WorkflowJob.swift",
+                "Services/BuildNotifierSharedDefaults.swift",
                 "Services/CircleCIAPI.swift",
                 "Services/CircleCIMCPService.swift",
                 "Services/KeychainService.swift"

@@ -411,8 +411,15 @@ public struct CircleCIMCPService {
         return projectSlug
     }
 
-    public static func loadWatchedProjectSlugs(userDefaults: UserDefaults = .standard) -> [String] {
-        guard let data = userDefaults.data(forKey: "UserPreferences"),
+    public static func loadWatchedProjectSlugs(userDefaults: UserDefaults? = nil) -> [String] {
+        let data: Data?
+        if let userDefaults {
+            data = userDefaults.data(forKey: BuildNotifierSharedDefaults.userPreferencesKey)
+        } else {
+            data = BuildNotifierSharedDefaults.loadData(forKey: BuildNotifierSharedDefaults.userPreferencesKey)
+        }
+
+        guard let data,
               let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let watchedProjects = jsonObject["watchedProjects"] as? [[String: Any]] else {
             return []
