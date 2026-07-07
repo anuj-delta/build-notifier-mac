@@ -160,8 +160,28 @@ actor CircleCIAPI {
         )
     }
     
+    /// Trigger a new pipeline for a branch, optionally passing pipeline parameters.
+    func triggerPipeline(
+        vcsType: String,
+        orgName: String,
+        repoName: String,
+        branch: String,
+        parameters: [String: String]?
+    ) async throws -> TriggeredPipeline {
+        let payload = TriggerPipelineRequest(
+            branch: branch,
+            parameters: (parameters?.isEmpty == false) ? parameters : nil
+        )
+        let body = try JSONEncoder().encode(payload)
+        return try await request(
+            url: "\(baseURLv2)/project/\(vcsType)/\(orgName)/\(repoName)/pipeline",
+            method: "POST",
+            body: body
+        )
+    }
+
     // MARK: - Generic Request
-    
+
     private func request<T: Decodable>(
         url urlString: String,
         method: String,

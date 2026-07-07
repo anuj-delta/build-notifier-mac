@@ -120,6 +120,32 @@ private enum PendingMenuAction {
             return nil
         }
     }
+
+    var icon: String {
+        switch self {
+        case .approve:
+            return "checkmark.seal.fill"
+        case .retry:
+            return "arrow.clockwise"
+        case .cancel:
+            return "xmark.octagon.fill"
+        }
+    }
+
+    var accent: Color {
+        confirmRole == .destructive ? AppChrome.danger : AppChrome.accent
+    }
+
+    var cancelTitle: String {
+        switch self {
+        case .approve:
+            return "Not Now"
+        case .retry:
+            return "Keep Current Build"
+        case .cancel:
+            return "Keep Running"
+        }
+    }
 }
 
 struct MenuBarContentView: View {
@@ -133,6 +159,7 @@ struct MenuBarContentView: View {
     @State private var isSearchExpanded = false
     @State private var searchText = ""
     @State private var pendingAction: PendingMenuAction?
+    @State private var deployTarget: WatchedProject?
     @FocusState private var isSearchFocused: Bool
     @Environment(\.openWindow) private var openWindow
 
@@ -182,6 +209,16 @@ struct MenuBarContentView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 .zIndex(1)
             }
+
+            if let deployTarget {
+                DeployBranchOverlay(
+                    project: deployTarget,
+                    appState: appState,
+                    onDismiss: { self.deployTarget = nil }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                .zIndex(2)
+            }
         }
         .frame(width: popoverWidth)
         .background {
@@ -198,6 +235,7 @@ struct MenuBarContentView: View {
                 .accessibilityHidden(true)
         }
         .animation(.easeInOut(duration: 0.16), value: pendingAction != nil)
+        .animation(.easeInOut(duration: 0.16), value: deployTarget != nil)
         .onAppear {
             selectDefaultTabIfNeeded(tabs: snapshot.availableTabs)
             appState.refreshNow()
@@ -576,6 +614,9 @@ struct MenuBarContentView: View {
                     },
                     onOpenRepo: { repoUrl in
                         openBuildUrl(repoUrl)
+                    },
+                    onDeploy: { project in
+                        deployTarget = project
                     }
                 )
             }
@@ -663,6 +704,9 @@ struct MenuBarContentView: View {
                     },
                     onOpenRepo: { repoUrl in
                         openBuildUrl(repoUrl)
+                    },
+                    onDeploy: { project in
+                        deployTarget = project
                     }
                 )
             }
@@ -800,62 +844,42 @@ private struct PendingActionOverlay: View {
 
     var body: some View {
         ZStack {
-            Rectangle()
-                .fill(.black.opacity(0.38))
-                .ignoresSafeArea()
-                .onTapGesture {}
+            ModalScrim(onDismiss: onCancel)
 
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(action.title)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(MenuPalette.ink)
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: action.icon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(action.accent)
+                        .frame(width: 34, height: 34)
+                        .background(
+                            Circle().fill(action.accent.opacity(0.14))
+                        )
 
-                    Text(action.message)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(MenuPalette.mutedInk)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(action.title)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(AppChrome.text)
+
+                        Text(action.message)
+                            .font(.system(size: 12.5, weight: .regular))
+                            .foregroundStyle(AppChrome.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
-                VStack(spacing: 12) {
-                    Button(action.confirmTitle) {
-                        onConfirm()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .tint(action.confirmRole == .destructive ? .red : .accentColor)
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 10) {
+                    Button(action.cancelTitle) { onCancel() }
+                        .buttonStyle(ModalActionButtonStyle(kind: .secondary))
 
-                    Button(cancelTitle(for: action)) {
-                        onCancel()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .frame(maxWidth: .infinity)
+                    Button(action.confirmTitle) { onConfirm() }
+                        .buttonStyle(ModalActionButtonStyle(
+                            kind: action.confirmRole == .destructive ? .destructive : .primary
+                        ))
                 }
             }
-            .padding(24)
-            .frame(width: 320)
-            .background(
-                RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous)
-                    .fill(MenuPalette.card)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous)
-                    .stroke(AppChrome.border, lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.18), radius: 18, y: 8)
-        }
-    }
-
-    private func cancelTitle(for action: PendingMenuAction) -> String {
-        switch action {
-        case .approve:
-            return "Not Now"
-        case .retry:
-            return "Keep Current Build"
-        case .cancel:
-            return "Keep Running"
+            .padding(20)
+            .modalSurface(width: 320)
         }
     }
 }

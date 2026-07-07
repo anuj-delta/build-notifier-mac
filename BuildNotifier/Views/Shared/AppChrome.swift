@@ -87,6 +87,11 @@ enum AppChrome {
         dark: NSColor(calibratedRed: 0.93, green: 0.67, blue: 0.28, alpha: 1)
     )
 
+    static let danger = dynamicColor(
+        light: NSColor(calibratedRed: 0.86, green: 0.24, blue: 0.20, alpha: 1),
+        dark: NSColor(calibratedRed: 0.98, green: 0.42, blue: 0.40, alpha: 1)
+    )
+
     static let radiusSmall: CGFloat = 6
     static let radiusMedium: CGFloat = 8
     static let radiusLarge: CGFloat = 10
