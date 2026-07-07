@@ -29,9 +29,12 @@ struct ProjectSection: View {
     let onOpen: (Build) -> Void
     let onOpenPR: (Build) -> Void
     let onOpenRepo: (String) -> Void
+    let onDeploy: (WatchedProject) -> Void
 
     @State private var isExpanded = true
     @State private var isRepoLinkHovered = false
+    @State private var isHeaderHovered = false
+    @State private var isDeployHovered = false
 
     private var repoUrl: String? {
         buildsByBranch.values.first?.first?.vcsUrl
@@ -74,6 +77,33 @@ struct ProjectSection: View {
         .animation(.easeOut(duration: 0.12), value: isRepoLinkHovered)
     }
 
+    private var deployButton: some View {
+        Button {
+            onDeploy(project)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                Text("Deploy")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(isDeployHovered ? AppChrome.accent : AppChrome.textMuted)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule().fill(isDeployHovered ? AppChrome.accentSoft : Color.clear)
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isDeployHovered = hovering
+        }
+        .pointingHandCursor()
+        .help("Deploy a branch to devnet")
+        .animation(.easeOut(duration: 0.12), value: isDeployHovered)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
@@ -92,10 +122,9 @@ struct ProjectSection: View {
 
                     Spacer(minLength: 6)
 
-                    Text("\(buildsByBranch.count)")
-                        .font(.system(size: 11, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(AppChrome.textMuted)
+                    deployButton
+                        .opacity(isHeaderHovered ? 1 : 0)
+                        .allowsHitTesting(isHeaderHovered)
 
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .medium))
@@ -108,7 +137,12 @@ struct ProjectSection: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .onHover { hovering in
+                isHeaderHovered = hovering
+            }
+            .animation(.easeOut(duration: 0.12), value: isHeaderHovered)
             .contextMenu {
+                Button("Deploy a Branch…") { onDeploy(project) }
                 if let repoUrl {
                     Button("Open Repository on the Web") { onOpenRepo(repoUrl) }
                 }

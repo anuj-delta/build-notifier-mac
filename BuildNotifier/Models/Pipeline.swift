@@ -52,3 +52,24 @@ struct PipelineActor: Codable {
 struct PipelineVCS: Codable {
     let branch: String?
 }
+
+// MARK: - Trigger Pipeline (CircleCI API v2)
+
+struct TriggerPipelineRequest: Encodable {
+    let branch: String
+    let parameters: [String: String]?
+}
+
+struct TriggeredPipeline: Decodable {
+    let id: String
+    let number: Int
+    let state: String?
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case number
+        case state
+        case createdAt = "created_at"
+    }
+}

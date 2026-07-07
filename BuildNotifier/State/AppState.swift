@@ -362,6 +362,37 @@ final class AppState {
         }
     }
     
+    func triggerDeployment(project: WatchedProject, branch: String, env: String) async throws -> TriggeredPipeline {
+        let params = env.isEmpty ? nil : ["env": env]
+        let pipeline = try await CircleCIAPI.shared.triggerPipeline(
+            vcsType: project.vcsType,
+            orgName: project.orgName,
+            repoName: project.repoName,
+            branch: branch,
+            parameters: params
+        )
+        schedulePostTriggerRefresh()
+        return pipeline
+    }
+
+    /// Delays (seconds) for the follow-up polls after a trigger. Overridable in tests.
+    var postTriggerRefreshDelays: [TimeInterval] = [2, 4, 6]
+
+    /// A freshly triggered pipeline takes a few seconds to appear in the v1.1
+    /// builds API, so poll immediately and then a couple more times to catch it
+    /// without waiting for the next full polling interval.
+    func schedulePostTriggerRefresh() {
+        poller.poll()
+        Task { @MainActor [weak self] in
+            guard let delays = self?.postTriggerRefreshDelays else { return }
+            for delaySeconds in delays {
+                try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                guard let self else { return }
+                await self.poller.checkNow()
+            }
+        }
+    }
+
     func approveJob(_ approval: PendingApproval) async {
         do {
             try await CircleCIAPI.shared.approveJob(

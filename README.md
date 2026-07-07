@@ -6,9 +6,22 @@ Build Notifier is a native macOS menu bar app for tracking CircleCI builds and V
 
 - Watches CircleCI projects for passing, failing, running, and approval-required workflows
 - Watches Vercel projects for deployment ready and deployment error states
+- Triggers ad-hoc branch deployments on CircleCI straight from the menu bar
 - Sends native macOS notifications with optional sound
 - Supports launch at login and per-project watch preferences
 - Stores CircleCI and Vercel tokens locally for repeat use
+
+## Deploy a Branch
+
+Any watched CircleCI repo can trigger a pipeline for an ad-hoc branch without opening the CircleCI web UI.
+
+1. Hover a repo in the menu bar and click `Deploy` (or right-click the repo and choose `Deploy a Branch`).
+2. Enter the branch name.
+3. Set the environment (defaults to `devnet`), then click `Deploy`.
+
+This calls the CircleCI v2 trigger API (`POST /project/{slug}/pipeline`) with the branch and an `env` pipeline parameter, using your stored token. Clearing the environment field sends only the branch, with no parameters.
+
+The repo's CircleCI config decides what a triggered pipeline does. For the "deploy any branch to an environment" flow to work, the config needs a pipeline `env` parameter and a workflow that runs when that parameter is set (for example, widening branch filters for a manual devnet deploy). After a successful trigger the list refreshes a few times so the new build appears within a few seconds.
 
 ## Screenshots
 
