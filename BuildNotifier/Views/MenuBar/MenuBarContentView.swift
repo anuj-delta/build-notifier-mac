@@ -576,6 +576,12 @@ struct MenuBarContentView: View {
                     },
                     onOpen: { build in
                         openBuildUrl(build.workflowUrl ?? build.buildUrl)
+                    },
+                    onOpenPR: { build in
+                        openBuildUrl(build.pullRequestUrl)
+                    },
+                    onOpenRepo: { repoUrl in
+                        openBuildUrl(repoUrl)
                     }
                 )
             }
@@ -664,6 +670,12 @@ struct MenuBarContentView: View {
                     },
                     onOpen: { build in
                         openBuildUrl(build.workflowUrl ?? build.buildUrl)
+                    },
+                    onOpenPR: { build in
+                        openBuildUrl(build.pullRequestUrl)
+                    },
+                    onOpenRepo: { repoUrl in
+                        openBuildUrl(repoUrl)
                     }
                 )
             }
