@@ -213,7 +213,8 @@ final class AutoApprovalPollerTests: XCTestCase {
                 jobName: "deploy",
                 workflowId: workflowId,
                 workflowName: "deploy-workflow"
-            )
+            ),
+            pullRequests: nil
         )
     }
 

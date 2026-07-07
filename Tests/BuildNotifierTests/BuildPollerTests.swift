@@ -246,7 +246,8 @@ final class BuildPollerTests: XCTestCase {
                 jobName: "job-\(buildNum)",
                 workflowId: workflowId,
                 workflowName: "build-and-deploy"
-            )
+            ),
+            pullRequests: nil
         )
     }
 

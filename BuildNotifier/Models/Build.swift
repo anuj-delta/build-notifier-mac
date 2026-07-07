@@ -24,9 +24,10 @@ struct Build: Codable, Identifiable, Equatable {
     let status: String?
     let retryOf: Int?
     let workflows: WorkflowInfo?
-    
+    let pullRequests: [PullRequest]?
+
     var id: String { "\(username ?? "")/\(reponame ?? "")/\(buildNum)" }
-    
+
     enum CodingKeys: String, CodingKey {
         case vcsUrl = "vcs_url"
         case buildUrl = "build_url"
@@ -49,12 +50,23 @@ struct Build: Codable, Identifiable, Equatable {
         case status
         case retryOf = "retry_of"
         case workflows
+        case pullRequests = "pull_requests"
     }
     
     static func == (lhs: Build, rhs: Build) -> Bool {
         lhs.buildNum == rhs.buildNum && 
         lhs.username == rhs.username && 
         lhs.reponame == rhs.reponame
+    }
+}
+
+struct PullRequest: Codable, Equatable {
+    let headSha: String?
+    let url: String?
+
+    enum CodingKeys: String, CodingKey {
+        case headSha = "head_sha"
+        case url
     }
 }
 
@@ -236,6 +248,17 @@ extension Build {
     var workflowUrl: String? {
         guard let workflowId = workflows?.workflowId else { return nil }
         return "https://app.circleci.com/pipelines/workflows/\(workflowId)"
+    }
+
+    var pullRequestUrl: String? {
+        guard let url = pullRequests?.first?.url, !url.isEmpty else { return nil }
+        return url
+    }
+
+    /// PR number parsed from the trailing path segment of the PR URL (e.g. `.../pull/478` -> 478).
+    var pullRequestNumber: Int? {
+        guard let last = pullRequestUrl?.split(separator: "/").last else { return nil }
+        return Int(last)
     }
 
     var autoApproveLabel: String {

@@ -55,6 +55,11 @@ enum AppChrome {
         dark: NSColor(calibratedWhite: 1.0, alpha: 0.05)
     )
 
+    static let rowHover = dynamicColor(
+        light: NSColor(calibratedWhite: 0.0, alpha: 0.05),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.07)
+    )
+
     static let focus = dynamicColor(
         light: NSColor(calibratedRed: 0.15, green: 0.40, blue: 0.88, alpha: 0.28),
         dark: NSColor(calibratedRed: 0.33, green: 0.56, blue: 0.98, alpha: 0.45)
