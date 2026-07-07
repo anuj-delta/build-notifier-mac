@@ -52,11 +52,8 @@ struct SettingsView: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar
+                .frame(maxHeight: .infinity)
                 .background(GlassBackground(material: .sidebar, cornerRadius: 0))
-
-            Rectangle()
-                .fill(AppChrome.separator)
-                .frame(width: 1)
 
             VStack(spacing: 0) {
                 detailHeader
@@ -71,6 +68,7 @@ struct SettingsView: View {
             .background(GlassBackground(material: .contentBackground, cornerRadius: 0))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
         .background(MenuWindowConfigurator())
         .frame(minWidth: 820, minHeight: 560)
         .onAppear {
