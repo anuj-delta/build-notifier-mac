@@ -25,6 +25,18 @@ struct GlassBackground: NSViewRepresentable {
     }
 }
 
+extension View {
+    /// Calm translucent panel over a glass surface: a single hairline edge, no
+    /// stacked frame. Shared by Settings sections and onboarding cards.
+    func glassCard(cornerRadius: CGFloat = AppChrome.radiusMedium, selected: Bool = false) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return self
+            .background(shape.fill(selected ? AppChrome.accentSoft : AppChrome.glassPanel))
+            .overlay(shape.strokeBorder(selected ? AppChrome.accent.opacity(0.55) : AppChrome.glassStroke, lineWidth: 1))
+            .clipShape(shape)
+    }
+}
+
 /// Makes the hosting popover window transparent so the glass material can blur
 /// what's behind it and the rounded corners read cleanly without a black box.
 struct MenuWindowConfigurator: NSViewRepresentable {

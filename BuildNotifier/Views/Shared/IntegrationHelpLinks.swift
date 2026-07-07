@@ -5,6 +5,7 @@ enum IntegrationHelpLinks {
     static let circleCIDocs = URL(string: "https://circleci.com/docs/guides/permissions-authentication/personal-api-tokens/")!
     static let vercelTokenPage = URL(string: "https://vercel.com/account/settings/tokens")!
     static let vercelDocs = URL(string: "https://vercel.com/guides/how-do-i-use-a-vercel-api-access-token")!
+    static let repository = URL(string: "https://github.com/anuj-delta/build-notifier-mac")!
 }
 
 struct IntegrationHelpLinkRow: View {

@@ -18,7 +18,7 @@ struct OnboardingView: View {
 
                 Text("Track CircleCI builds and Vercel deployments from one quiet menu bar app.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppChrome.textMuted)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 340)
             }
@@ -32,10 +32,11 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Connect CircleCI")
                     .font(.headline)
+                    .foregroundStyle(AppChrome.text)
 
                 Text("Add your CircleCI personal token to fetch builds, approvals, and project lists.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppChrome.textMuted)
 
                 SecureField("Personal API Token", text: $apiToken)
                     .textFieldStyle(.roundedBorder)
@@ -54,8 +55,7 @@ struct OnboardingView: View {
             }
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(14)
+            .glassCard(cornerRadius: 14)
 
             if showError, let error = appState.error {
                 HStack(spacing: 8) {
@@ -105,6 +105,8 @@ struct OnboardingView: View {
         }
         .padding(32)
         .frame(width: 430, height: 520)
+        .background(GlassBackground(material: .underWindowBackground, cornerRadius: 0))
+        .background(MenuWindowConfigurator())
     }
 
     private func validateToken() async {
@@ -130,10 +132,9 @@ struct OnboardingView: View {
                 .lineLimit(1)
         }
         .font(.caption)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(AppChrome.textMuted)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(999)
+        .glassCard(cornerRadius: 999)
     }
 }

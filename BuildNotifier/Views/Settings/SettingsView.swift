@@ -39,15 +39,6 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         }
     }
 
-    var eyebrow: String {
-        switch self {
-        case .general: return "System"
-        case .notifications: return "Alerts"
-        case .circleCI: return "CircleCI"
-        case .vercel: return "Vercel"
-        case .about: return "Build Notifier"
-        }
-    }
 }
 
 struct SettingsView: View {
@@ -59,38 +50,29 @@ struct SettingsView: View {
     @State private var showingVercelOnboarding = false
 
     var body: some View {
-        ZStack {
-            AppChrome.window
-                .ignoresSafeArea()
+        HStack(spacing: 0) {
+            sidebar
+                .background(GlassBackground(material: .sidebar, cornerRadius: 0))
 
-            HStack(spacing: 0) {
-                sidebar
+            Rectangle()
+                .fill(AppChrome.separator)
+                .frame(width: 1)
 
-                Rectangle()
-                    .fill(AppChrome.separator)
-                    .frame(width: 1)
+            VStack(spacing: 0) {
+                detailHeader
 
-                VStack(spacing: 0) {
-                    detailHeader
-
-                    ScrollView {
-                        detailContent
-                            .padding(24)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                    }
-                    .background(AppChrome.surface)
+                ScrollView {
+                    detailContent
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 20)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(AppChrome.surface)
-            .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusLarge, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: AppChrome.radiusLarge, style: .continuous)
-                    .stroke(AppChrome.border, lineWidth: 1)
-            }
-            .padding(12)
+            .background(GlassBackground(material: .contentBackground, cornerRadius: 0))
         }
-        .frame(minWidth: 940, minHeight: 660)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(MenuWindowConfigurator())
+        .frame(minWidth: 820, minHeight: 560)
         .onAppear {
             NSApplication.shared.activate(ignoringOtherApps: true)
         }
@@ -101,39 +83,23 @@ struct SettingsView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 12) {
-                    AppBrandIcon(size: 40)
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 11) {
+                AppBrandIcon(size: 32)
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Build Notifier")
-                            .font(.system(size: 19, weight: .semibold))
-                            .foregroundStyle(AppChrome.text)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Build Notifier")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(AppChrome.text)
 
-                        Text("CircleCI and Vercel release signals.")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(AppChrome.textMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                HStack(spacing: 14) {
-                    SidebarMetric(title: "Watching", value: "\(watchedItemCount)")
-
-                    Rectangle()
-                        .fill(AppChrome.separator)
-                        .frame(width: 1, height: 28)
-
-                    SidebarMetric(title: "Alerts", value: appState.preferences.notificationsEnabled ? "On" : "Off")
+                    Text("CircleCI and Vercel signals.")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(AppChrome.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Navigation")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(AppChrome.textMuted)
-
+            VStack(alignment: .leading, spacing: 3) {
                 ForEach(SettingsTab.allCases) { tab in
                     SidebarTabButton(
                         tab: tab,
@@ -154,55 +120,35 @@ struct SettingsView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(AppChrome.textMuted)
 
-                VStack(spacing: 0) {
+                VStack(spacing: 2) {
                     SidebarStatusRow(title: "CircleCI", isActive: appState.hasCircleCIToken)
-                    Divider()
                     SidebarStatusRow(title: "Vercel", isActive: appState.hasVercelToken)
                 }
             }
+
+            SidebarLinkRow(title: "View on GitHub", destination: IntegrationHelpLinks.repository)
         }
         .padding(20)
-        .frame(width: 252)
+        .padding(.top, 24)
+        .frame(width: 240)
         .frame(maxHeight: .infinity, alignment: .topLeading)
-        .background(AppChrome.surfaceMuted)
     }
 
     private var detailHeader: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(selectedTab.eyebrow.uppercased())
-                .font(.system(size: 11, weight: .medium))
+        VStack(alignment: .leading, spacing: 4) {
+            Text(selectedTab.title)
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(AppChrome.text)
+
+            Text(selectedTab.subtitle)
+                .font(.system(size: 12.5, weight: .regular))
                 .foregroundStyle(AppChrome.textMuted)
-
-            HStack(alignment: .firstTextBaseline, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(selectedTab.title)
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(AppChrome.text)
-
-                    Text(selectedTab.subtitle)
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(AppChrome.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-
-                VStack(alignment: .trailing, spacing: 6) {
-                    Text("\(integrationCount) integrations")
-                    Text("\(watchedItemCount) watched")
-                    Text("Refresh \(refreshIntervalLabel)")
-                }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(AppChrome.textMuted)
-                .monospacedDigit()
-            }
-
-            Text(appState.preferences.notificationsEnabled ? "Notifications enabled" : "Notifications muted")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(appState.preferences.notificationsEnabled ? AppChrome.accent : AppChrome.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(24)
-        .background(AppChrome.surface)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24)
+        .padding(.top, 24)
+        .padding(.bottom, 16)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(AppChrome.separator)
@@ -227,7 +173,7 @@ struct SettingsView: View {
     }
 
     private var generalTab: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: 20) {
             SettingsSection(
                 title: "Behavior",
                 subtitle: "Startup and polling preferences.",
@@ -276,7 +222,7 @@ struct SettingsView: View {
     }
 
     private var notificationsTab: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: 20) {
             SettingsSection(
                 title: "Global",
                 subtitle: "Master notification preferences.",
@@ -410,7 +356,7 @@ struct SettingsView: View {
     @ViewBuilder
     private var circleCITab: some View {
         if appState.hasCircleCIToken {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 20) {
                 SettingsSection(
                     title: "Account",
                     subtitle: "CircleCI connection details.",
@@ -507,7 +453,7 @@ struct SettingsView: View {
                 }
             }
         } else {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 20) {
                 SettingsEmptyStateSection(
                     title: "CircleCI is not connected",
                     message: "Connect your CircleCI token to watch builds and approval jobs.",
@@ -542,7 +488,7 @@ struct SettingsView: View {
     @ViewBuilder
     private var vercelTab: some View {
         if appState.hasVercelToken {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 20) {
                 SettingsSection(
                     title: "Account",
                     subtitle: "Vercel connection details.",
@@ -630,7 +576,7 @@ struct SettingsView: View {
                 }
             }
         } else {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 20) {
                 SettingsEmptyStateSection(
                     title: "Vercel is not connected",
                     message: "Connect your Vercel account to watch preview and deployment status.",
@@ -660,7 +606,7 @@ struct SettingsView: View {
     }
 
     private var aboutTab: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: 20) {
             SettingsSection(
                 title: "About",
                 subtitle: "App details and credits.",
@@ -717,40 +663,46 @@ struct SettingsView: View {
             NSApplication.shared.activate(ignoringOtherApps: true)
         }
     }
-
-    private var integrationCount: Int {
-        [appState.hasCircleCIToken, appState.hasVercelToken].filter { $0 }.count
-    }
-
-    private var watchedItemCount: Int {
-        appState.preferences.watchedProjects.count + appState.preferences.watchedVercelProjects.count
-    }
-
-    private var refreshIntervalLabel: String {
-        switch appState.preferences.pollingIntervalSeconds {
-        case 30: return "30s"
-        case 60: return "60s"
-        case 120: return "2m"
-        case 300: return "5m"
-        default: return "\(appState.preferences.pollingIntervalSeconds)s"
-        }
-    }
 }
 
-private struct SidebarMetric: View {
+private struct SidebarLinkRow: View {
     let title: String
-    let value: String
+    let destination: URL
+
+    @State private var isHovered = false
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(AppChrome.textMuted)
+        Button {
+            openURL(destination)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.up.forward.square")
+                    .font(.system(size: 12, weight: .medium))
 
-            Text(value)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(AppChrome.text)
+                Text(title)
+                    .font(.system(size: 12.5, weight: .medium))
+
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(isHovered ? AppChrome.accent : AppChrome.textMuted)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous)
+                    .fill(isHovered ? AppChrome.hover : Color.clear)
+            )
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .onContinuousHover { phase in
+            switch phase {
+            case .active: isHovered = true
+            case .ended: isHovered = false
+            }
+        }
+        .pointingHandCursor()
+        .help("Open the project on GitHub")
     }
 }
 
@@ -759,35 +711,38 @@ private struct SidebarTabButton: View {
     let isSelected: Bool
     let action: () -> Void
 
+    @State private var isHovered = false
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                SettingsRowIcon(systemImage: tab.systemImage)
+                Image(systemName: tab.systemImage)
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(isSelected ? AppChrome.accent : AppChrome.textMuted)
+                    .frame(width: 20)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(tab.title)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(AppChrome.text)
-
-                    Text(tab.eyebrow)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(AppChrome.textMuted)
-                }
+                Text(tab.title)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                    .foregroundStyle(isSelected ? AppChrome.text : AppChrome.textMuted)
 
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(isSelected ? AppChrome.accentSoft : Color.clear)
-            .overlay {
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
                 RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous)
-                    .stroke(isSelected ? AppChrome.focus : Color.clear, lineWidth: 1)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous))
+                    .fill(isSelected ? AppChrome.accentSoft : (isHovered ? AppChrome.hover : Color.clear))
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onContinuousHover { phase in
+            switch phase {
+            case .active: isHovered = true
+            case .ended: isHovered = false
+            }
+        }
+        .pointingHandCursor()
     }
 }
 
@@ -830,13 +785,13 @@ private struct SettingsSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 SettingsRowIcon(systemImage: systemImage)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(AppChrome.text)
 
                     Text(subtitle)
@@ -846,14 +801,24 @@ private struct SettingsSection<Content: View>: View {
 
                 Spacer()
             }
-            .padding(.bottom, 12)
+            .padding(.leading, 2)
 
-            VStack(spacing: 0) {
-                Divider()
+            SettingsCard {
                 content
-                Divider()
             }
         }
+    }
+}
+
+private struct SettingsCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard()
     }
 }
 
@@ -980,33 +945,25 @@ private struct SettingsEmptyStateSection: View {
     let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(title)
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(AppChrome.text)
+        SettingsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(AppChrome.text)
 
-            Text(message)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(AppChrome.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(message)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(AppChrome.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Button(buttonTitle) {
-                action()
+                Button(buttonTitle) {
+                    action()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-        }
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(AppChrome.separator)
-                .frame(height: 1)
-        }
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppChrome.separator)
-                .frame(height: 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
         }
     }
 }

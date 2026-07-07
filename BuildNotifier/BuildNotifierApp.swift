@@ -18,8 +18,9 @@ struct BuildNotifierApp: App {
         Window("Settings", id: "settings") {
             SettingsView(appState: appState)
         }
-        .defaultSize(width: 920, height: 640)
+        .defaultSize(width: 860, height: 580)
         .windowResizability(.contentMinSize)
+        .windowStyle(.hiddenTitleBar)
         .defaultPosition(.center)
         
         // Onboarding Window

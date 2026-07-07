@@ -40,6 +40,13 @@ enum AppChrome {
         dark: NSColor(calibratedWhite: 1.0, alpha: 0.12)
     )
 
+    /// Calm translucent fill for grouped cards layered over a glass surface.
+    /// Legible without going fully opaque.
+    static let glassPanel = dynamicColor(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.5),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.045)
+    )
+
     static let text = dynamicColor(
         light: NSColor(calibratedWhite: 0.12, alpha: 1),
         dark: NSColor(calibratedWhite: 0.94, alpha: 1)
