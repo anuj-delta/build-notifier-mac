@@ -140,9 +140,6 @@ struct MenuBarContentView: View {
         let snapshot = makeSnapshot()
 
         ZStack {
-            MenuPalette.backdrop
-                .ignoresSafeArea()
-
             VStack(spacing: 0) {
                 header(snapshot: snapshot)
 
@@ -164,13 +161,13 @@ struct MenuBarContentView: View {
 
                 footer
             }
-            .background(MenuPalette.card)
-            .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusLarge, style: .continuous))
+            .background(GlassBackground(cornerRadius: 13))
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: AppChrome.radiusLarge, style: .continuous)
-                    .stroke(MenuPalette.cardBorder, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .strokeBorder(AppChrome.glassStroke, lineWidth: 1)
             }
-            .padding(8)
+            .background(MenuWindowConfigurator())
 
             if let pendingAction {
                 PendingActionOverlay(
@@ -187,6 +184,19 @@ struct MenuBarContentView: View {
             }
         }
         .frame(width: popoverWidth)
+        .background {
+            Button(action: openSearch) { EmptyView() }
+                .keyboardShortcut("s", modifiers: [])
+                .disabled(isSearchExpanded)
+                .opacity(0)
+                .accessibilityHidden(true)
+
+            Button(action: closeSearch) { EmptyView() }
+                .keyboardShortcut(.cancelAction)
+                .disabled(!isSearchExpanded)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
         .animation(.easeInOut(duration: 0.16), value: pendingAction != nil)
         .onAppear {
             selectDefaultTabIfNeeded(tabs: snapshot.availableTabs)
@@ -195,18 +205,15 @@ struct MenuBarContentView: View {
     }
 
     private func header(snapshot: MenuBarSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                AppBrandIcon(size: 30)
+        let showsTabs = snapshot.availableTabs.count > 1
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Build Notifier")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(MenuPalette.ink)
-                    Text("Approvals, builds, and deployment signals.")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(MenuPalette.mutedInk)
-                }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                AppBrandIcon(size: 26)
+
+                Text("Build Notifier")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(MenuPalette.ink)
 
                 Spacer(minLength: 0)
 
@@ -218,7 +225,7 @@ struct MenuBarContentView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            if snapshot.availableTabs.count > 1 {
+            if showsTabs {
                 MenuBarTabPicker(
                     selectedTab: Binding(
                         get: { snapshot.activeTab },
@@ -231,37 +238,34 @@ struct MenuBarContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, 12)
-        .padding(.bottom, 10)
-        .background(MenuPalette.card)
+        .padding(.bottom, showsTabs ? 0 : 10)
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppChrome.separator)
-                .frame(height: 1)
+            if !showsTabs {
+                Rectangle()
+                    .fill(AppChrome.separator)
+                    .frame(height: 1)
+            }
         }
         .animation(.spring(response: 0.28, dampingFraction: 0.92), value: isSearchExpanded)
     }
 
     private var headerActions: some View {
-        HStack(spacing: 5) {
-            Button {
+        HStack(spacing: 2) {
+            HeaderIconButton(
+                systemName: isSearchExpanded ? "line.3.horizontal.decrease.circle.fill" : "magnifyingglass",
+                help: isSearchExpanded ? "Hide search" : "Search branches",
+                accessibilityLabel: isSearchExpanded ? "Hide search" : "Search branches",
+                isActive: isSearchExpanded
+            ) {
                 toggleSearch()
-            } label: {
-                Image(systemName: isSearchExpanded ? "line.3.horizontal.decrease.circle.fill" : "magnifyingglass")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(AppChrome.text)
-                    .frame(width: 26, height: 26)
             }
-            .buttonStyle(.plain)
-            .background(AppChrome.surfaceMuted)
-            .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous)
-                    .stroke(AppChrome.border, lineWidth: 1)
-            }
-            .help(isSearchExpanded ? "Hide search" : "Search branches")
-            .accessibilityLabel(isSearchExpanded ? "Hide search" : "Search branches")
 
-            Button {
+            HeaderIconButton(
+                systemName: "arrow.clockwise",
+                help: "Refresh now",
+                accessibilityLabel: "Refresh now",
+                rotation: isRefreshing ? 360 : 0
+            ) {
                 withAnimation(.linear(duration: 0.8).repeatCount(3, autoreverses: false)) {
                     isRefreshing = true
                 }
@@ -269,74 +273,64 @@ struct MenuBarContentView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
                     isRefreshing = false
                 }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(AppChrome.text)
-                    .rotationEffect(.degrees(isRefreshing ? 360 : 0))
-                    .frame(width: 26, height: 26)
             }
-            .buttonStyle(.plain)
-            .background(AppChrome.surfaceMuted)
-            .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous)
-                    .stroke(AppChrome.border, lineWidth: 1)
-            }
-            .help("Refresh now")
-            .accessibilityLabel("Refresh now")
 
-            Button {
+            HeaderIconButton(
+                systemName: "gearshape.fill",
+                help: "Settings",
+                accessibilityLabel: "Open settings"
+            ) {
                 openSettings()
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(AppChrome.text)
-                    .frame(width: 26, height: 26)
             }
-            .buttonStyle(.plain)
-            .background(AppChrome.surfaceMuted)
-            .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous)
-                    .stroke(AppChrome.border, lineWidth: 1)
-            }
-            .help("Settings")
-            .accessibilityLabel("Open settings")
         }
     }
 
     private func searchField(activeTab: MenuBarTab) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.caption)
-                .foregroundStyle(MenuPalette.mutedInk)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(isSearchFocused ? AppChrome.accent : MenuPalette.mutedInk)
 
             TextField(searchPlaceholder(for: activeTab), text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.caption)
+                .font(.system(size: 13, weight: .regular))
                 .focused($isSearchFocused)
 
-            if !searchText.isEmpty {
+            if searchText.isEmpty {
+                Text("esc")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(MenuPalette.mutedInk)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(AppChrome.hover)
+                    )
+            } else {
                 Button {
                     clearSearch()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
                         .foregroundStyle(MenuPalette.mutedInk)
                 }
                 .buttonStyle(.plain)
+                .pointingHandCursor()
                 .help("Clear search")
                 .accessibilityLabel("Clear search")
             }
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(AppChrome.surfaceMuted)
-        .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous)
-                .stroke(AppChrome.focus.opacity(isSearchFocused ? 1 : 0), lineWidth: 1)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(AppChrome.rowHover)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(isSearchFocused ? AppChrome.accent.opacity(0.7) : AppChrome.glassStroke, lineWidth: 1)
+        )
+        .animation(.easeOut(duration: 0.14), value: isSearchFocused)
         .onChange(of: isSearchFocused) { _, focused in
             if !focused && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.92)) {
@@ -615,13 +609,6 @@ struct MenuBarContentView: View {
 
     @ViewBuilder
     private func circleCIContent(snapshot: MenuBarSnapshot) -> some View {
-        ProviderSummaryCard(
-            markStyle: .circleCI,
-            title: "CircleCI",
-            subtitle: "Builds, approvals, and quick actions for your tracked branches.",
-            pillText: snapshot.circleCISummaryLabel
-        )
-
         if !snapshot.filteredPendingApprovals.isEmpty {
             PendingApprovalsSection(
                 approvals: snapshot.filteredPendingApprovals,
@@ -684,13 +671,6 @@ struct MenuBarContentView: View {
 
     @ViewBuilder
     private func vercelContent(snapshot: MenuBarSnapshot) -> some View {
-        ProviderSummaryCard(
-            markStyle: .vercel,
-            title: "Vercel",
-            subtitle: "Latest deployments from your watched preview and production projects.",
-            pillText: snapshot.vercelSummaryLabel
-        )
-
         if appState.watchedVercelProjects.isEmpty {
             ProviderEmptyStateCard(
                 title: "No Vercel projects selected",
@@ -723,19 +703,29 @@ struct MenuBarContentView: View {
     }
 
     private func toggleSearch() {
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.92)) {
-            isSearchExpanded.toggle()
-        }
-
         if isSearchExpanded {
-            DispatchQueue.main.async {
-                isSearchFocused = true
-            }
+            closeSearch()
         } else {
-            isSearchFocused = false
-            if trimmedSearchText.isEmpty {
-                searchText = ""
+            openSearch()
+        }
+    }
+
+    private func openSearch() {
+        if !isSearchExpanded {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.92)) {
+                isSearchExpanded = true
             }
+        }
+        DispatchQueue.main.async {
+            isSearchFocused = true
+        }
+    }
+
+    private func closeSearch() {
+        isSearchFocused = false
+        searchText = ""
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.92)) {
+            isSearchExpanded = false
         }
     }
 
@@ -870,13 +860,44 @@ private struct PendingActionOverlay: View {
     }
 }
 
+private struct HeaderIconButton: View {
+    let systemName: String
+    let help: String
+    let accessibilityLabel: String
+    var rotation: Double = 0
+    var isActive: Bool = false
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(isActive || isHovered ? AppChrome.text : AppChrome.textMuted)
+                .rotationEffect(.degrees(rotation))
+                .frame(width: 26, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(isHovered ? AppChrome.hover : Color.clear)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .pointingHandCursor()
+        .help(help)
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
 struct MenuBarTabPicker: View {
     @Binding var selectedTab: MenuBarTab
     let tabs: [MenuBarTab]
     let countProvider: (MenuBarTab) -> Int
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 2) {
             ForEach(tabs, id: \.self) { tab in
                 let isSelected = selectedTab == tab
 
@@ -887,38 +908,42 @@ struct MenuBarTabPicker: View {
                         selectedTab = tab
                     }
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
                         Text(tab.title)
-                            .font(.system(size: 12, weight: isSelected ? .bold : .semibold))
-                            .foregroundStyle(isSelected ? Color.white : AppChrome.text)
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                            .foregroundStyle(isSelected ? AppChrome.text : AppChrome.textMuted)
                             .lineLimit(1)
 
                         Text("\(countProvider(tab))")
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(isSelected ? Color.white.opacity(0.84) : AppChrome.textMuted)
                             .monospacedDigit()
+                            .foregroundStyle(isSelected ? AppChrome.accent : AppChrome.textMuted)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(
+                                Capsule().fill(isSelected ? AppChrome.accentSoft : AppChrome.surfaceMuted)
+                            )
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 4)
+                    .padding(.bottom, 9)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
                             .fill(isSelected ? AppChrome.accent : Color.clear)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous)
-                            .stroke(isSelected ? AppChrome.accent.opacity(0.92) : Color.clear, lineWidth: 1)
-                    )
+                            .frame(height: 2)
+                    }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .pointingHandCursor()
             }
+
+            Spacer(minLength: 0)
         }
-        .padding(4)
-        .background(AppChrome.surfaceMuted)
-        .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous)
-                .stroke(AppChrome.border, lineWidth: 1)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppChrome.separator)
+                .frame(height: 1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

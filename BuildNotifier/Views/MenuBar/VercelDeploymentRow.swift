@@ -39,29 +39,35 @@ struct VercelDeploymentRow: View {
         .padding(.leading, 0)
         .padding(.trailing, 12)
         .padding(.vertical, 9)
-        .background(Color.clear)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isHovered ? AppChrome.rowHover : Color.clear)
+                .padding(.leading, -8)
+                .padding(.trailing, -4)
+        )
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
         }
+        .pointingHandCursor()
         .onTapGesture {
             openDeployment()
         }
     }
 
-    @ViewBuilder
     private var leadingIndicator: some View {
-        if deployment.deploymentStatus.isRunning {
-            ProgressView()
-                .controlSize(.small)
-                .tint(.orange)
-                .frame(width: 14, height: 14)
-        } else {
-            Image(systemName: deployment.deploymentStatus.iconName)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(statusColor)
-                .frame(width: 14, height: 14)
+        ZStack {
+            if deployment.deploymentStatus.isRunning {
+                Circle()
+                    .fill(statusColor.opacity(0.22))
+                    .frame(width: 16, height: 16)
+            }
+
+            Circle()
+                .fill(statusColor)
+                .frame(width: 9, height: 9)
         }
+        .frame(width: 14, height: 14)
     }
 
     private var primaryLabel: String {
@@ -115,6 +121,11 @@ struct VercelProjectSection: View {
 
                     Spacer()
 
+                    Text("\(min(deployments.count, 5))")
+                        .font(.system(size: 11, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(AppChrome.textMuted)
+
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(AppChrome.textMuted)
@@ -128,8 +139,6 @@ struct VercelProjectSection: View {
             .buttonStyle(.plain)
 
             if isExpanded {
-                Divider()
-
                 if deployments.isEmpty {
                     Text("No recent deployments")
                         .font(.system(size: 12, weight: .regular))
@@ -137,15 +146,12 @@ struct VercelProjectSection: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 14)
                 } else {
-                    VStack(spacing: 0) {
-                        ForEach(Array(deployments.prefix(5).enumerated()), id: \.element.id) { index, deployment in
+                    VStack(spacing: 2) {
+                        ForEach(Array(deployments.prefix(5).enumerated()), id: \.element.id) { _, deployment in
                             VercelDeploymentRow(deployment: deployment)
-
-                            if index < min(deployments.count, 5) - 1 {
-                                Divider()
-                            }
                         }
                     }
+                    .padding(.bottom, 4)
                 }
             }
         }
