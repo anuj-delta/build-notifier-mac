@@ -27,8 +27,8 @@ struct VercelOnboardingView: View {
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(Circle())
+                .background(Circle().fill(AppChrome.glassPanel))
+                .overlay(Circle().strokeBorder(AppChrome.glassStroke, lineWidth: 1))
                 .opacity(step != .token ? 1 : 0)
                 .disabled(step == .token)
 
@@ -39,7 +39,7 @@ struct VercelOnboardingView: View {
                         .font(.headline)
                     Text(stepCaption)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppChrome.textMuted)
                 }
 
                 Spacer()
@@ -50,8 +50,8 @@ struct VercelOnboardingView: View {
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(Circle())
+                .background(Circle().fill(AppChrome.glassPanel))
+                .overlay(Circle().strokeBorder(AppChrome.glassStroke, lineWidth: 1))
             }
             .padding(16)
 
@@ -113,7 +113,7 @@ struct VercelOnboardingView: View {
             .padding(16)
         }
         .frame(width: 460, height: 560)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(GlassBackground(material: .underWindowBackground, cornerRadius: 0))
     }
 
     private var heroCard: some View {
@@ -127,22 +127,21 @@ struct VercelOnboardingView: View {
 
                 Text("Add preview and production deployment visibility alongside your CircleCI builds.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppChrome.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)
         }
         .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(14)
+        .glassCard(cornerRadius: 14)
     }
 
     private var tokenStepView: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Use a Vercel personal token with access to the projects you want to watch.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppChrome.textMuted)
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Vercel Access Token")
@@ -165,8 +164,7 @@ struct VercelOnboardingView: View {
                 }
             }
             .padding(14)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(12)
+            .glassCard(cornerRadius: 12)
         }
     }
 
@@ -174,7 +172,7 @@ struct VercelOnboardingView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Choose the team or personal scope that owns the projects you want to monitor.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppChrome.textMuted)
 
             VStack(spacing: 8) {
                 selectionCard(
@@ -208,8 +206,7 @@ struct VercelOnboardingView: View {
                 }
             }
             .padding(14)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(12)
+            .glassCard(cornerRadius: 12)
         }
     }
 
@@ -217,20 +214,19 @@ struct VercelOnboardingView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Select the Vercel projects that should appear in the menu bar.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppChrome.textMuted)
 
             if appState.vercelProjects.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "tray")
                         .font(.largeTitle)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppChrome.textMuted)
                     Text("No projects found")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppChrome.textMuted)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(30)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .cornerRadius(12)
+                .glassCard(cornerRadius: 12)
             } else {
                 VStack(spacing: 8) {
                     ForEach(appState.vercelProjects) { project in
@@ -358,11 +354,13 @@ struct VercelOnboardingView: View {
             Text(label)
         }
         .font(.caption)
-        .foregroundStyle(isActive || isCompleted ? Color.accentColor : Color.secondary)
+        .foregroundStyle(isActive || isCompleted ? AppChrome.accent : AppChrome.textMuted)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background((isActive ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor)))
-        .cornerRadius(999)
+        .background(
+            RoundedRectangle(cornerRadius: 999, style: .continuous)
+                .fill(isActive ? AppChrome.accentSoft : AppChrome.glassPanel)
+        )
     }
 
     private func stepOrder(_ step: OnboardingStep) -> Int {
@@ -382,17 +380,18 @@ struct VercelOnboardingView: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isSelected ? AppChrome.accent : AppChrome.textMuted)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.subheadline)
                         .fontWeight(.semibold)
+                        .foregroundStyle(AppChrome.text)
 
                     if let subtitle, !subtitle.isEmpty {
                         Text(subtitle)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppChrome.textMuted)
                     }
                 }
 
@@ -400,12 +399,7 @@ struct VercelOnboardingView: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.primary.opacity(0.05), lineWidth: 1)
-            )
-            .cornerRadius(12)
+            .glassCard(cornerRadius: 12, selected: isSelected)
         }
         .buttonStyle(.plain)
     }
@@ -422,7 +416,7 @@ private struct VercelProjectSelectionRow: View {
             Button(action: onToggle) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isSelected ? AppChrome.accent : AppChrome.textMuted)
             }
             .buttonStyle(.plain)
 
@@ -430,11 +424,12 @@ private struct VercelProjectSelectionRow: View {
                 Text(project.name)
                     .font(.subheadline)
                     .fontWeight(.semibold)
+                    .foregroundStyle(AppChrome.text)
 
                 if let framework = project.framework, !framework.isEmpty {
                     Text(framework)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppChrome.textMuted)
                 }
             }
 
@@ -452,11 +447,6 @@ private struct VercelProjectSelectionRow: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isSelected ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.primary.opacity(0.05), lineWidth: 1)
-        )
-        .cornerRadius(12)
+        .glassCard(cornerRadius: 12, selected: isSelected)
     }
 }

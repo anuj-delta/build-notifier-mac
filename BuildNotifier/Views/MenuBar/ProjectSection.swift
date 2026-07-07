@@ -63,15 +63,7 @@ struct ProjectSection: View {
                         .transition(.opacity)
                 }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(isRepoLinkHovered ? AppChrome.accentSoft : Color.clear)
-            )
-            .padding(.horizontal, -6)
-            .padding(.vertical, -3)
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -99,6 +91,11 @@ struct ProjectSection: View {
                     }
 
                     Spacer(minLength: 6)
+
+                    Text("\(buildsByBranch.count)")
+                        .font(.system(size: 11, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(AppChrome.textMuted)
 
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .medium))
@@ -247,19 +244,19 @@ struct BuildRow: View {
         .pointingHandCursor()
     }
 
-    @ViewBuilder
     private var leadingIndicator: some View {
-        if build.buildStatus.isRunning {
-            ProgressView()
-                .controlSize(.small)
-                .tint(.orange)
-                .frame(width: 14, height: 14)
-        } else {
-            Image(systemName: build.buildStatus.iconName)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(statusColor)
-                .frame(width: 14, height: 14)
+        ZStack {
+            if build.buildStatus.isRunning {
+                Circle()
+                    .fill(statusColor.opacity(0.22))
+                    .frame(width: 16, height: 16)
+            }
+
+            Circle()
+                .fill(statusColor)
+                .frame(width: 9, height: 9)
         }
+        .frame(width: 14, height: 14)
     }
 
     private var trailingActions: some View {

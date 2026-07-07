@@ -28,14 +28,14 @@ struct ProjectSelectorView: View {
 
                 Text("Select the repositories you want to keep visible in the menu bar.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppChrome.textMuted)
                     .multilineTextAlignment(.center)
             }
 
             HStack(spacing: 8) {
                 Label("Only projects you follow on CircleCI appear here.", systemImage: "info.circle.fill")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppChrome.textMuted)
 
                 Spacer()
 
@@ -53,15 +53,18 @@ struct ProjectSelectorView: View {
 
                 Link("Follow more", destination: URL(string: "https://app.circleci.com/projects/")!)
                     .font(.caption)
+                    .tint(AppChrome.accent)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color.blue.opacity(0.08))
-            .cornerRadius(10)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(AppChrome.accentSoft)
+            )
 
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppChrome.textMuted)
 
                 TextField("Filter projects", text: $searchText)
                     .textFieldStyle(.plain)
@@ -71,15 +74,14 @@ struct ProjectSelectorView: View {
                         searchText = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppChrome.textMuted)
                     }
                     .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(12)
+            .glassCard(cornerRadius: 10)
 
             Group {
                 if appState.isLoading {
@@ -121,17 +123,17 @@ struct ProjectSelectorView: View {
                 }
             }
             .padding(12)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(14)
+            .glassCard(cornerRadius: 14)
 
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Watching \(selectedProjects.count) of \(appState.projects.count) projects")
                         .font(.subheadline)
                         .fontWeight(.medium)
+                        .foregroundStyle(AppChrome.text)
                     Text("You can adjust follow mode per project later in Settings.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppChrome.textMuted)
                 }
 
                 Spacer()
@@ -146,6 +148,8 @@ struct ProjectSelectorView: View {
         }
         .padding(24)
         .frame(width: 580, height: 600)
+        .background(GlassBackground(material: .underWindowBackground, cornerRadius: 0))
+        .background(MenuWindowConfigurator())
         .onAppear {
             initializeFromExistingWatchlist()
         }
@@ -215,7 +219,7 @@ struct ProjectRow: View {
             } label: {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isSelected ? AppChrome.accent : AppChrome.textMuted)
             }
             .buttonStyle(.plain)
 
@@ -223,11 +227,12 @@ struct ProjectRow: View {
                 Text(project.displayName)
                     .font(.subheadline)
                     .fontWeight(.semibold)
+                    .foregroundStyle(AppChrome.text)
 
                 if let vcsUrl = project.vcsUrl {
                     Text(vcsUrl)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppChrome.textMuted)
                         .lineLimit(1)
                 }
             }
@@ -246,11 +251,6 @@ struct ProjectRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(isSelected ? Color.accentColor.opacity(0.08) : Color(nsColor: .windowBackgroundColor))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.primary.opacity(0.05), lineWidth: 1)
-        )
-        .cornerRadius(12)
+        .glassCard(cornerRadius: 12, selected: isSelected)
     }
 }

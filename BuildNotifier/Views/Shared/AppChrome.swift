@@ -29,8 +29,22 @@ enum AppChrome {
     )
 
     static let separator = dynamicColor(
-        light: NSColor(calibratedWhite: 0.90, alpha: 1),
-        dark: NSColor(calibratedWhite: 0.24, alpha: 1)
+        light: NSColor(calibratedWhite: 0.0, alpha: 0.07),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.09)
+    )
+
+    /// Hairline for the outer edge of translucent surfaces. Kept lighter than
+    /// `border` so glass reads as a single crisp edge, not a stacked frame.
+    static let glassStroke = dynamicColor(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.5),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.12)
+    )
+
+    /// Calm translucent fill for grouped cards layered over a glass surface.
+    /// Legible without going fully opaque.
+    static let glassPanel = dynamicColor(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.5),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.045)
     )
 
     static let text = dynamicColor(
@@ -43,11 +57,14 @@ enum AppChrome {
         dark: NSColor(calibratedWhite: 0.66, alpha: 1)
     )
 
-    static let accent = Color(red: 0.15, green: 0.40, blue: 0.88)
+    static let accent = dynamicColor(
+        light: NSColor(calibratedRed: 0.0, green: 0.48, blue: 1.0, alpha: 1),
+        dark: NSColor(calibratedRed: 0.28, green: 0.60, blue: 1.0, alpha: 1)
+    )
 
     static let accentSoft = dynamicColor(
-        light: NSColor(calibratedRed: 0.15, green: 0.40, blue: 0.88, alpha: 0.08),
-        dark: NSColor(calibratedRed: 0.15, green: 0.40, blue: 0.88, alpha: 0.20)
+        light: NSColor(calibratedRed: 0.0, green: 0.48, blue: 1.0, alpha: 0.10),
+        dark: NSColor(calibratedRed: 0.30, green: 0.62, blue: 1.0, alpha: 0.18)
     )
 
     static let hover = dynamicColor(
@@ -61,8 +78,8 @@ enum AppChrome {
     )
 
     static let focus = dynamicColor(
-        light: NSColor(calibratedRed: 0.15, green: 0.40, blue: 0.88, alpha: 0.28),
-        dark: NSColor(calibratedRed: 0.33, green: 0.56, blue: 0.98, alpha: 0.45)
+        light: NSColor(calibratedRed: 0.0, green: 0.48, blue: 1.0, alpha: 0.30),
+        dark: NSColor(calibratedRed: 0.30, green: 0.62, blue: 1.0, alpha: 0.50)
     )
 
     static let warning = dynamicColor(
