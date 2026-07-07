@@ -319,6 +319,11 @@ final class AppState {
     }
     
     func refreshNow() {
+        // Popover open is the reliable interaction point for an .accessory app,
+        // so recover notification-permission state here too.
+        Task {
+            await NotificationManager.shared.checkAuthorizationStatus()
+        }
         if hasCircleCIToken {
             poller.poll()
             autoApprovalPoller.poll()
