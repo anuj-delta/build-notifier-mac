@@ -212,9 +212,6 @@ struct BuildRow: View {
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 10) {
-                    leadingIndicator
-                        .padding(.top, 2)
-
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text(build.branch ?? "unknown")
@@ -222,6 +219,13 @@ struct BuildRow: View {
                                 .foregroundStyle(AppChrome.text)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
+                                .shimmering(active: status.isInProgress)
+
+                            if status.isInProgress {
+                                RunningSpinner()
+                            } else {
+                                StatusGlyph(status: status)
+                            }
 
                             if build.pullRequestUrl != nil {
                                 PullRequestBadge(number: build.pullRequestNumber, action: onOpenPR)
@@ -278,19 +282,8 @@ struct BuildRow: View {
         .pointingHandCursor()
     }
 
-    private var leadingIndicator: some View {
-        ZStack {
-            if build.buildStatus.isRunning {
-                Circle()
-                    .fill(statusColor.opacity(0.22))
-                    .frame(width: 16, height: 16)
-            }
-
-            Circle()
-                .fill(statusColor)
-                .frame(width: 9, height: 9)
-        }
-        .frame(width: 14, height: 14)
+    private var status: RowStatus {
+        RowStatus(build.buildStatus)
     }
 
     private var trailingActions: some View {
@@ -364,22 +357,6 @@ struct BuildRow: View {
         build.buildStatus.isFailure || build.buildStatus.isRunning || canAutoApprove || isAutoApproveArmed
     }
 
-    private var statusColor: Color {
-        switch build.buildStatus {
-        case .success, .fixed:
-            return .green
-        case .failed, .timedout, .infrastructureFail:
-            return .red
-        case .canceled:
-            return .gray
-        case .running, .queued, .scheduled, .notRunning:
-            return .orange
-        case .onHold:
-            return AppChrome.warning
-        default:
-            return .gray
-        }
-    }
 }
 
 private struct CopyBranchButton: View {

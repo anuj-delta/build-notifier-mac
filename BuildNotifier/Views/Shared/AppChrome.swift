@@ -92,6 +92,16 @@ enum AppChrome {
         dark: NSColor(calibratedRed: 0.98, green: 0.42, blue: 0.40, alpha: 1)
     )
 
+    static let success = dynamicColor(
+        light: NSColor(calibratedRed: 0.18, green: 0.63, blue: 0.26, alpha: 1),
+        dark: NSColor(calibratedRed: 0.25, green: 0.72, blue: 0.31, alpha: 1)
+    )
+
+    static let successSoft = dynamicColor(
+        light: NSColor(calibratedRed: 0.18, green: 0.63, blue: 0.26, alpha: 0.14),
+        dark: NSColor(calibratedRed: 0.25, green: 0.72, blue: 0.31, alpha: 0.17)
+    )
+
     static let radiusSmall: CGFloat = 6
     static let radiusMedium: CGFloat = 8
     static let radiusLarge: CGFloat = 10

@@ -302,11 +302,9 @@ struct MenuBarContentView: View {
                 systemName: "arrow.clockwise",
                 help: "Refresh now",
                 accessibilityLabel: "Refresh now",
-                rotation: isRefreshing ? 360 : 0
+                isLoading: isRefreshing
             ) {
-                withAnimation(.linear(duration: 0.8).repeatCount(3, autoreverses: false)) {
-                    isRefreshing = true
-                }
+                isRefreshing = true
                 appState.refreshNow()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
                     isRefreshing = false
@@ -888,7 +886,7 @@ private struct HeaderIconButton: View {
     let systemName: String
     let help: String
     let accessibilityLabel: String
-    var rotation: Double = 0
+    var isLoading: Bool = false
     var isActive: Bool = false
     let action: () -> Void
 
@@ -896,16 +894,23 @@ private struct HeaderIconButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(isActive || isHovered ? AppChrome.text : AppChrome.textMuted)
-                .rotationEffect(.degrees(rotation))
-                .frame(width: 26, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(isHovered ? AppChrome.hover : Color.clear)
-                )
-                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                } else {
+                    Image(systemName: systemName)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isActive || isHovered ? AppChrome.text : AppChrome.textMuted)
+                }
+            }
+            .frame(width: 26, height: 26)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isHovered ? AppChrome.hover : Color.clear)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }

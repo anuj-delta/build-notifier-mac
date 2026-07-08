@@ -9,16 +9,22 @@ struct VercelDeploymentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            leadingIndicator
-                .padding(.top, 2)
-
             VStack(alignment: .leading, spacing: 6) {
-                Text(primaryLabel)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(AppChrome.text)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: labelMaxWidth, alignment: .leading)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(primaryLabel)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(AppChrome.text)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .shimmering(active: status.isInProgress)
+
+                    if status.isInProgress {
+                        RunningSpinner()
+                    } else {
+                        StatusGlyph(status: status)
+                    }
+                }
+                .frame(maxWidth: labelMaxWidth, alignment: .leading)
 
                 Text(deployment.truncatedCommitMessage)
                     .font(.system(size: 12, weight: .regular))
@@ -55,19 +61,8 @@ struct VercelDeploymentRow: View {
         }
     }
 
-    private var leadingIndicator: some View {
-        ZStack {
-            if deployment.deploymentStatus.isRunning {
-                Circle()
-                    .fill(statusColor.opacity(0.22))
-                    .frame(width: 16, height: 16)
-            }
-
-            Circle()
-                .fill(statusColor)
-                .frame(width: 9, height: 9)
-        }
-        .frame(width: 14, height: 14)
+    private var status: RowStatus {
+        RowStatus(deployment.deploymentStatus)
     }
 
     private var primaryLabel: String {
@@ -78,16 +73,6 @@ struct VercelDeploymentRow: View {
             return branch
         }
         return "Unknown ref"
-    }
-
-    private var statusColor: Color {
-        switch deployment.deploymentStatus {
-        case .ready: return .green
-        case .error: return .red
-        case .canceled: return .gray
-        case .building, .queued, .initializing: return .orange
-        case .unknown: return .gray
-        }
     }
 
     private func openDeployment() {
