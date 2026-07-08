@@ -2,17 +2,37 @@ import SwiftUI
 import AppKit
 
 extension View {
-    /// Shows the pointing-hand cursor while hovered. Uses `onContinuousHover` because a
-    /// one-shot `onHover` push is reset by AppKit as the pointer keeps moving inside the view.
+    /// Shows the pointing-hand cursor while hovered. Uses the AppKit cursor stack
+    /// (`push`/`pop`) rather than `set()` so the cursor survives view redraws -
+    /// otherwise an animating sibling (e.g. the shimmer) resets it every frame and
+    /// the pointer flickers.
     func pointingHandCursor() -> some View {
-        onContinuousHover { phase in
-            switch phase {
-            case .active:
-                NSCursor.pointingHand.set()
-            case .ended:
-                NSCursor.arrow.set()
+        modifier(PointingHandCursor())
+    }
+}
+
+private struct PointingHandCursor: ViewModifier {
+    @State private var pushed = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering in
+                if hovering {
+                    guard !pushed else { return }
+                    NSCursor.pointingHand.push()
+                    pushed = true
+                } else {
+                    guard pushed else { return }
+                    NSCursor.pop()
+                    pushed = false
+                }
             }
-        }
+            .onDisappear {
+                if pushed {
+                    NSCursor.pop()
+                    pushed = false
+                }
+            }
     }
 }
 
@@ -212,9 +232,6 @@ struct BuildRow: View {
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 10) {
-                    leadingIndicator
-                        .padding(.top, 2)
-
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text(build.branch ?? "unknown")
@@ -222,6 +239,13 @@ struct BuildRow: View {
                                 .foregroundStyle(AppChrome.text)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
+                                .shimmering(active: status.isInProgress)
+
+                            if status.isInProgress {
+                                RunningSpinner()
+                            } else {
+                                StatusGlyph(status: status)
+                            }
 
                             if build.pullRequestUrl != nil {
                                 PullRequestBadge(number: build.pullRequestNumber, action: onOpenPR)
@@ -278,19 +302,8 @@ struct BuildRow: View {
         .pointingHandCursor()
     }
 
-    private var leadingIndicator: some View {
-        ZStack {
-            if build.buildStatus.isRunning {
-                Circle()
-                    .fill(statusColor.opacity(0.22))
-                    .frame(width: 16, height: 16)
-            }
-
-            Circle()
-                .fill(statusColor)
-                .frame(width: 9, height: 9)
-        }
-        .frame(width: 14, height: 14)
+    private var status: RowStatus {
+        RowStatus(build.buildStatus)
     }
 
     private var trailingActions: some View {
@@ -364,22 +377,6 @@ struct BuildRow: View {
         build.buildStatus.isFailure || build.buildStatus.isRunning || canAutoApprove || isAutoApproveArmed
     }
 
-    private var statusColor: Color {
-        switch build.buildStatus {
-        case .success, .fixed:
-            return .green
-        case .failed, .timedout, .infrastructureFail:
-            return .red
-        case .canceled:
-            return .gray
-        case .running, .queued, .scheduled, .notRunning:
-            return .orange
-        case .onHold:
-            return AppChrome.warning
-        default:
-            return .gray
-        }
-    }
 }
 
 private struct CopyBranchButton: View {
