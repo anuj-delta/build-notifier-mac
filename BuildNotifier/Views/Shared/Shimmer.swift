@@ -36,6 +36,7 @@ struct Shimmer: ViewModifier {
                         }
                         .mask(content)
                     }
+                    .allowsHitTesting(false)
                 )
                 .onAppear {
                     withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
