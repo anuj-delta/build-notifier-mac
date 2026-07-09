@@ -42,6 +42,7 @@ final class AppState {
     var isLoading = false
     var error: String?
     var showingSettings = false
+    var availableUpdate: ReleaseInfo?
     
     // MARK: - Services
     let poller: BuildPoller
@@ -215,6 +216,8 @@ final class AppState {
         armedAutoApprovals.removeAll()
         await NotificationManager.shared.requestAuthorization()
         NotificationManager.shared.setupNotificationCategories()
+
+        Task { await checkForUpdates() }
         
         // Load Vercel token if available
         if KeychainService.shared.hasVercelToken() {
@@ -326,6 +329,11 @@ final class AppState {
         if hasVercelToken {
             vercelPoller.poll()
         }
+        Task { await checkForUpdates() }
+    }
+
+    func checkForUpdates() async {
+        availableUpdate = await UpdateChecker.shared.checkForUpdate()
     }
     
     func retryBuild(_ build: Build) async {
