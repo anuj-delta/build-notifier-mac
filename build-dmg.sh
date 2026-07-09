@@ -5,7 +5,8 @@ set -e
 
 APP_NAME="Build Notifier"
 DMG_NAME="Build-Notifier"
-VERSION="1.4.0"
+# Single source of truth for the version is build-app.sh.
+VERSION="$(grep '^VERSION=' build-app.sh | head -1 | cut -d'"' -f2)"
 
 # First build the app
 echo "Building app..."
