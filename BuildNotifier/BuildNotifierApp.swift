@@ -1,10 +1,33 @@
 import SwiftUI
+import Sentry
 
 @main
 struct BuildNotifierApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var appState = AppState()
-    
+
+    init() {
+        // DSN comes from the SENTRY_DSN env var (dev / `swift run`) or the
+        // SentryDSN Info.plist key baked in at build time (packaged .app, which
+        // can't read shell env). Skip init entirely when neither is set.
+        guard let dsn = Self.sentryDSN else { return }
+        SentrySDK.start { options in
+            options.dsn = dsn
+            options.sendDefaultPii = true
+            options.debug = ProcessInfo.processInfo.environment["SENTRY_DEBUG"] == "1"
+        }
+    }
+
+    private static var sentryDSN: String? {
+        let candidates = [
+            ProcessInfo.processInfo.environment["SENTRY_DSN"],
+            Bundle.main.object(forInfoDictionaryKey: "SentryDSN") as? String
+        ]
+        return candidates
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
     var body: some Scene {
         // Menu Bar
         MenuBarExtra {

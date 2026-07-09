@@ -9,9 +9,15 @@ let package = Package(
     products: [
         .executable(name: "BuildNotifier", targets: ["BuildNotifier"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.21.0")
+    ],
     targets: [
         .executableTarget(
             name: "BuildNotifier",
+            dependencies: [
+                .product(name: "Sentry", package: "sentry-cocoa")
+            ],
             path: "BuildNotifier",
             exclude: [
                 "Assets"
