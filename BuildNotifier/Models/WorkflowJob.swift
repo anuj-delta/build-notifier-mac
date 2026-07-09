@@ -100,6 +100,7 @@ struct ArmedAutoApproval: Identifiable, Equatable {
     let branch: String?
     let label: String
     let buildUrl: String?
+    let author: String?
     let armedAt: Date
 
     var id: String { workflowId }
@@ -114,6 +115,7 @@ struct ArmedAutoApproval: Identifiable, Equatable {
         self.branch = build.branch
         self.label = build.autoApproveLabel
         self.buildUrl = build.workflowUrl ?? build.buildUrl
+        self.author = build.authorDisplayName
         self.armedAt = armedAt
     }
 }

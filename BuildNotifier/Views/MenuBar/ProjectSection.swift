@@ -265,11 +265,25 @@ struct BuildRow: View {
                             Spacer(minLength: 0)
                         }
 
-                        Text(build.truncatedSubject)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(AppChrome.textMuted)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                        HStack(spacing: 5) {
+                            if let author = build.authorDisplayName {
+                                Text(author)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(AppChrome.text.opacity(0.75))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+
+                                Text("·")
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundStyle(AppChrome.textMuted)
+                            }
+
+                            Text(build.truncatedSubject)
+                                .font(.system(size: 12, weight: .regular))
+                                .foregroundStyle(AppChrome.textMuted)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 

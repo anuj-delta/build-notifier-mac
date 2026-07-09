@@ -162,6 +162,16 @@ extension VercelDeployment {
         "https://vercel.com/deployments/\(uid)"
     }
     
+    /// Human-readable commit author for notifications. Prefers the GitHub login (username).
+    var authorDisplayName: String? {
+        for candidate in [meta?.authorLogin, meta?.authorName] {
+            if let name = candidate?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
+                return name
+            }
+        }
+        return nil
+    }
+
     var truncatedCommitMessage: String {
         guard let message = meta?.commitMessage else { return "No commit message" }
         let firstLine = message.components(separatedBy: .newlines).first ?? message

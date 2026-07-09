@@ -52,7 +52,13 @@ struct MenuBarLabel: View {
 
     var body: some View {
         Group {
-            if appState.hasActiveBuildActivity {
+            if !appState.pendingApprovals.isEmpty {
+                Image(systemName: "pause.circle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .symbolRenderingMode(.hierarchical)
+                    .frame(width: 16, height: 14)
+            } else if appState.hasActiveBuildActivity {
                 MenuBarSpinnerGlyph()
             } else {
                 Image(systemName: "circle.dashed")
@@ -62,7 +68,14 @@ struct MenuBarLabel: View {
                     .frame(width: 16, height: 14)
             }
         }
-        .accessibilityLabel(appState.hasActiveBuildActivity ? "Builds running" : "Idle")
+        .accessibilityLabel(menuBarAccessibilityLabel)
+    }
+
+    private var menuBarAccessibilityLabel: String {
+        if !appState.pendingApprovals.isEmpty {
+            return "Approval pending"
+        }
+        return appState.hasActiveBuildActivity ? "Builds running" : "Idle"
     }
 }
 
