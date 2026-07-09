@@ -81,6 +81,7 @@ struct UserPreferences: Codable {
 
     // Celebrations (independent of the notification toggles above)
     var celebrateProdSuccess: Bool
+    var celebrateDeployedBranches: Bool
     var successSound: String
     var playFailureSound: Bool
     var failureSound: String
@@ -102,6 +103,7 @@ struct UserPreferences: Codable {
         notifyOnDeploymentError: true,
         selectedVercelTeamId: nil,
         celebrateProdSuccess: true,
+        celebrateDeployedBranches: true,
         successSound: CelebrationSound.defaultSuccess.rawValue,
         playFailureSound: true,
         failureSound: CelebrationSound.defaultFailure.rawValue,
@@ -140,6 +142,7 @@ struct UserPreferences: Codable {
                 if let v = partial["notifyOnDeploymentError"] as? Bool { prefs.notifyOnDeploymentError = v }
                 if let v = partial["selectedVercelTeamId"] as? String { prefs.selectedVercelTeamId = v }
                 if let v = partial["celebrateProdSuccess"] as? Bool { prefs.celebrateProdSuccess = v }
+                if let v = partial["celebrateDeployedBranches"] as? Bool { prefs.celebrateDeployedBranches = v }
                 if let v = partial["successSound"] as? String { prefs.successSound = v }
                 if let v = partial["playFailureSound"] as? Bool { prefs.playFailureSound = v }
                 if let v = partial["failureSound"] as? String { prefs.failureSound = v }

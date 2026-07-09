@@ -31,6 +31,11 @@ final class AppState {
     // Celebration dedup (in-memory; seeded at baseline so relaunch doesn't re-fire)
     var celebratedSuccessWorkflows: Set<String> = []
     var playedFailureSoundWorkflows: Set<String> = []
+
+    // Branches the user deployed via the Deploy-a-Branch modal this session.
+    // Their success fires confetti and their failure plays the failure sound,
+    // even when the branch isn't in `productionBranches`. Cleared on relaunch.
+    var deployedBranchKeys: Set<String> = []
     var celebratedVercelDeployments: Set<String> = []
     var playedFailureVercelDeployments: Set<String> = []
 
@@ -349,10 +354,22 @@ final class AppState {
 
     // MARK: - Celebrations
 
-    func celebrateProdSuccess(projectLabel: String) {
-        guard preferences.celebrateProdSuccess else { return }
+    /// Normalized key identifying a deployed branch. Case-insensitive so it
+    /// matches regardless of how the branch/slug is cased in the builds API.
+    nonisolated static func deployKey(projectSlug: String, branch: String) -> String {
+        "\(projectSlug.lowercased())#\(branch.lowercased())"
+    }
+
+    /// Fire confetti + success sound unconditionally. Callers decide whether the
+    /// branch/pref combination warrants a celebration.
+    func celebrate(projectLabel: String) {
         AudioPlayer.shared.play(CelebrationSound(rawValue: preferences.successSound) ?? .defaultSuccess)
         ConfettiPresenter.shared.present(projectLabel: projectLabel)
+    }
+
+    func celebrateProdSuccess(projectLabel: String) {
+        guard preferences.celebrateProdSuccess else { return }
+        celebrate(projectLabel: projectLabel)
     }
 
     func playFailureSound() {
@@ -403,6 +420,7 @@ final class AppState {
             branch: branch,
             parameters: params
         )
+        deployedBranchKeys.insert(Self.deployKey(projectSlug: project.slug, branch: branch))
         schedulePostTriggerRefresh()
         return pipeline
     }

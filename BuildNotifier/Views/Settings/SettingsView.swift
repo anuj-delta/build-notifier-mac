@@ -405,7 +405,7 @@ struct SettingsView: View {
     private var celebrationsSection: some View {
         SettingsSection(
             title: "Celebrations",
-            subtitle: "Confetti and sound effects for production deploys and failures.",
+            subtitle: "Confetti and sound effects for production and deployed branches, and failures.",
             systemImage: "party.popper"
         ) {
             SettingsToggleRow(
@@ -419,11 +419,24 @@ struct SettingsView: View {
                 ),
                 trailing: {
                     Button("Test") {
-                        appState.celebrateProdSuccess(projectLabel: "your-org/your-project")
+                        appState.celebrate(projectLabel: "your-org/your-project")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
+            )
+
+            Divider()
+
+            SettingsToggleRow(
+                title: "Confetti on branches I deploy",
+                isOn: Binding(
+                    get: { appState.preferences.celebrateDeployedBranches },
+                    set: {
+                        appState.preferences.celebrateDeployedBranches = $0
+                        appState.savePreferences()
+                    }
+                )
             )
 
             Divider()
@@ -441,7 +454,7 @@ struct SettingsView: View {
                     fallback: .defaultSuccess
                 )
             }
-            .disabled(!appState.preferences.celebrateProdSuccess)
+            .disabled(!(appState.preferences.celebrateProdSuccess || appState.preferences.celebrateDeployedBranches))
 
             Divider()
 
