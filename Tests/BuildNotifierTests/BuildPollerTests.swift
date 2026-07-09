@@ -229,6 +229,8 @@ final class BuildPollerTests: XCTestCase {
             vcsRevision: "rev-\(buildNum)",
             committerName: committerName,
             committerEmail: committerEmail,
+            authorName: committerName,
+            authorEmail: committerEmail,
             subject: "Commit \(buildNum)",
             body: nil,
             why: "github",

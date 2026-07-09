@@ -10,6 +10,8 @@ struct Build: Codable, Identifiable, Equatable {
     let vcsRevision: String?
     let committerName: String?
     let committerEmail: String?
+    let authorName: String?
+    let authorEmail: String?
     let subject: String?
     let body: String?
     let why: String?
@@ -36,6 +38,8 @@ struct Build: Codable, Identifiable, Equatable {
         case vcsRevision = "vcs_revision"
         case committerName = "committer_name"
         case committerEmail = "committer_email"
+        case authorName = "author_name"
+        case authorEmail = "author_email"
         case subject
         case body
         case why
@@ -228,6 +232,22 @@ extension Build {
         return "gh"
     }
     
+    /// Human-readable commit author for notifications. Prefers author over committer,
+    /// then falls back to the local-part of whichever email is present.
+    var authorDisplayName: String? {
+        for candidate in [authorName, committerName] {
+            if let name = candidate?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
+                return name
+            }
+        }
+        for email in [authorEmail, committerEmail] {
+            if let local = email?.split(separator: "@").first, !local.isEmpty {
+                return String(local)
+            }
+        }
+        return nil
+    }
+
     var truncatedSubject: String {
         guard let subject = subject else { return "No commit message" }
         if subject.count > 50 {

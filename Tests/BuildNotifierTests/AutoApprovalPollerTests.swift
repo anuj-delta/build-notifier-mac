@@ -196,6 +196,8 @@ final class AutoApprovalPollerTests: XCTestCase {
             vcsRevision: "abc123",
             committerName: "Dev",
             committerEmail: "dev@example.com",
+            authorName: "Dev",
+            authorEmail: "dev@example.com",
             subject: "Ship it",
             body: nil,
             why: nil,

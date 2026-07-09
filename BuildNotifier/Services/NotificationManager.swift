@@ -35,14 +35,20 @@ final class NotificationManager: NSObject, ObservableObject {
     }
     
     // MARK: - Send Notifications
-    
+
+    /// Appends the commit/PR author to a message body, e.g. "Ship it · by anuj-sharma".
+    private func withAuthor(_ message: String, author: String?) -> String {
+        guard let author, !author.isEmpty else { return message }
+        return "\(message) · by \(author)"
+    }
+
     func sendBuildSuccessNotification(build: Build, soundEnabled: Bool = true) {
         guard isAuthorized else { return }
-        
+
         let content = UNMutableNotificationContent()
-        content.title = "Build Passed"
+        content.title = "✅ Build passed"
         content.subtitle = "\(build.projectSlug) (\(build.branch ?? "unknown"))"
-        content.body = build.truncatedSubject
+        content.body = withAuthor(build.truncatedSubject, author: build.authorDisplayName)
         content.sound = soundEnabled ? .default : nil
         content.userInfo = [
             "buildUrl": build.workflowUrl ?? build.buildUrl ?? "",
@@ -62,9 +68,9 @@ final class NotificationManager: NSObject, ObservableObject {
         guard isAuthorized else { return }
         
         let content = UNMutableNotificationContent()
-        content.title = "Build Failed"
+        content.title = "❌ Build failed"
         content.subtitle = "\(build.projectSlug) (\(build.branch ?? "unknown"))"
-        content.body = build.truncatedSubject
+        content.body = withAuthor(build.truncatedSubject, author: build.authorDisplayName)
         content.sound = soundEnabled ? .default : nil
         content.userInfo = [
             "buildUrl": build.workflowUrl ?? build.buildUrl ?? "",
@@ -84,9 +90,9 @@ final class NotificationManager: NSObject, ObservableObject {
         guard isAuthorized else { return }
         
         let content = UNMutableNotificationContent()
-        content.title = "Approval Required"
+        content.title = "⏸️ Approval required"
         content.subtitle = "\(approval.build.projectSlug) (\(approval.build.branch ?? "unknown"))"
-        content.body = "\(approval.jobName) waiting for approval"
+        content.body = withAuthor("\(approval.jobName) waiting for approval", author: approval.build.authorDisplayName)
         content.sound = soundEnabled ? .default : nil
         content.categoryIdentifier = "APPROVAL_CATEGORY"
         content.userInfo = [
@@ -113,9 +119,9 @@ final class NotificationManager: NSObject, ObservableObject {
         guard isAuthorized else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "Approval Auto-Approved"
+        content.title = "🤖 Auto-approved"
         content.subtitle = "\(armedApproval.projectSlug) (\(armedApproval.branch ?? "unknown"))"
-        content.body = "\(jobName) approved automatically"
+        content.body = withAuthor("\(jobName) approved automatically", author: armedApproval.author)
         content.sound = soundEnabled ? .default : nil
         content.userInfo = [
             "buildUrl": armedApproval.buildUrl ?? "",
@@ -136,9 +142,9 @@ final class NotificationManager: NSObject, ObservableObject {
         guard isAuthorized else { return }
         
         let content = UNMutableNotificationContent()
-        content.title = "Build Started"
+        content.title = "🔄 Build started"
         content.subtitle = "\(build.projectSlug) (\(build.branch ?? "unknown"))"
-        content.body = build.truncatedSubject
+        content.body = withAuthor(build.truncatedSubject, author: build.authorDisplayName)
         content.sound = soundEnabled ? .default : nil
         content.userInfo = [
             "buildUrl": build.workflowUrl ?? build.buildUrl ?? "",
@@ -160,9 +166,9 @@ final class NotificationManager: NSObject, ObservableObject {
         guard isAuthorized else { return }
         
         let content = UNMutableNotificationContent()
-        content.title = "Deployment Ready"
+        content.title = "✅ Deployment ready"
         content.subtitle = "\(deployment.projectName) (\(deployment.meta?.branch ?? "unknown"))"
-        content.body = deployment.truncatedCommitMessage
+        content.body = withAuthor(deployment.truncatedCommitMessage, author: deployment.authorDisplayName)
         content.sound = soundEnabled ? .default : nil
         content.userInfo = [
             "deploymentUrl": deployment.deploymentUrl ?? deployment.vercelDashboardUrl,
@@ -182,9 +188,9 @@ final class NotificationManager: NSObject, ObservableObject {
         guard isAuthorized else { return }
         
         let content = UNMutableNotificationContent()
-        content.title = "Deployment Failed"
+        content.title = "❌ Deployment failed"
         content.subtitle = "\(deployment.projectName) (\(deployment.meta?.branch ?? "unknown"))"
-        content.body = deployment.truncatedCommitMessage
+        content.body = withAuthor(deployment.truncatedCommitMessage, author: deployment.authorDisplayName)
         content.sound = soundEnabled ? .default : nil
         content.userInfo = [
             "deploymentUrl": deployment.vercelDashboardUrl,
