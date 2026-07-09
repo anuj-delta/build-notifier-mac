@@ -350,6 +350,8 @@ final class BuildPoller: ObservableObject {
         appState.notifiedStartedWorkflows = startedWorkflows
         appState.notifiedFailedWorkflows = failedWorkflows
         appState.notifiedSuccessWorkflows = successWorkflows
+        appState.celebratedSuccessWorkflows = successWorkflows
+        appState.playedFailureSoundWorkflows = failedWorkflows
     }
     
     // MARK: - Status Change Detection
@@ -363,8 +365,11 @@ final class BuildPoller: ObservableObject {
     ) async {
         guard let appState = appState else { return }
 
-        // Check global notifications toggle first
-        guard preferences.notificationsEnabled else { return }
+        // Celebrations gate only on their own prefs, so they must be able to run
+        // even when notifications are globally disabled.
+        let notificationsEnabled = preferences.notificationsEnabled
+        let celebrationsWanted = preferences.celebrateProdSuccess || preferences.playFailureSound
+        guard notificationsEnabled || celebrationsWanted else { return }
 
         let soundEnabled = preferences.notificationSoundEnabled
         let fetchWorkflowJobs = self.fetchWorkflowJobs
@@ -379,14 +384,16 @@ final class BuildPoller: ObservableObject {
             }
         }
 
-        // Track notified workflows
+        // Track notified / celebrated workflows
         var newSuccessWorkflows = appState.notifiedSuccessWorkflows
         var newFailedWorkflows = appState.notifiedFailedWorkflows
         var newStartedWorkflows = appState.notifiedStartedWorkflows
+        var newCelebratedSuccess = appState.celebratedSuccessWorkflows
+        var newPlayedFailureSound = appState.playedFailureSoundWorkflows
 
         for (workflowId, builds) in buildsByWorkflow {
             // STARTED: Notify once when workflow has any running job
-            if preferences.notifyOnBuildStarted {
+            if notificationsEnabled && preferences.notifyOnBuildStarted {
                 if !appState.notifiedStartedWorkflows.contains(workflowId) {
                     if builds.contains(where: { $0.buildStatus.isRunning }) {
                         if let representativeBuild = builds.first {
@@ -397,53 +404,68 @@ final class BuildPoller: ObservableObject {
                 }
             }
 
-            // FAILURE: Notify once when ANY job in workflow fails
-            if preferences.notifyOnFailure {
-                if !appState.notifiedFailedWorkflows.contains(workflowId) {
-                    if let failedBuild = builds.first(where: { $0.buildStatus.isFailure }) {
-                        sendBuildFailureNotification(failedBuild, soundEnabled)
-                        newFailedWorkflows.insert(workflowId)
-                    }
+            // FAILURE: notification and/or failure sound, once each per workflow
+            if let failedBuild = builds.first(where: { $0.buildStatus.isFailure }) {
+                if notificationsEnabled && preferences.notifyOnFailure
+                    && !appState.notifiedFailedWorkflows.contains(workflowId) {
+                    sendBuildFailureNotification(failedBuild, soundEnabled)
+                    newFailedWorkflows.insert(workflowId)
+                }
+                if preferences.playFailureSound
+                    && !appState.playedFailureSoundWorkflows.contains(workflowId) {
+                    appState.playFailureSound()
+                    newPlayedFailureSound.insert(workflowId)
                 }
             }
 
-            // SUCCESS: Notify once when ALL jobs in workflow succeed
-            // Use v2 API to check ALL jobs (v1.1 may not include not-yet-started jobs)
-            if preferences.notifyOnSuccess {
-                if !appState.notifiedSuccessWorkflows.contains(workflowId) {
-                    do {
-                        let allJobs = try await fetchWorkflowJobs(workflowId)
+            // SUCCESS: notification and/or production-deploy confetti.
+            // Uses v2 API to check ALL jobs (v1.1 may omit not-yet-started jobs).
+            let wantsSuccessNotification = notificationsEnabled && preferences.notifyOnSuccess
+                && !appState.notifiedSuccessWorkflows.contains(workflowId)
+            let wantsConfetti = preferences.celebrateProdSuccess
+                && !appState.celebratedSuccessWorkflows.contains(workflowId)
+                && ProductionBranchMatcher.isProduction(
+                    branch: builds.first?.branch,
+                    patterns: preferences.productionBranches
+                )
+            if wantsSuccessNotification || wantsConfetti {
+                do {
+                    let allJobs = try await fetchWorkflowJobs(workflowId)
 
-                        // Check if any jobs are still incomplete
-                        let hasIncompleteJobs = allJobs.contains { job in
-                            let status = job.status
-                            return status == "running" || status == "queued" ||
-                                   status == "blocked" || status == "not_run" ||
-                                   status == "on_hold"
-                        }
-
-                        // Only succeed if no incomplete jobs AND all jobs succeeded
-                        if !hasIncompleteJobs {
-                            let allSucceeded = allJobs.allSatisfy { $0.status == "success" }
-                            if allSucceeded, let representativeBuild = builds.first {
-                                sendBuildSuccessNotification(representativeBuild, soundEnabled)
-                                newSuccessWorkflows.insert(workflowId)
-                            }
-                        }
-                    } catch {
-                        // Ignore API errors, will retry on next poll
+                    let hasIncompleteJobs = allJobs.contains { job in
+                        let status = job.status
+                        return status == "running" || status == "queued" ||
+                               status == "blocked" || status == "not_run" ||
+                               status == "on_hold"
                     }
+
+                    if !hasIncompleteJobs,
+                       allJobs.allSatisfy({ $0.status == "success" }),
+                       let representativeBuild = builds.first {
+                        if wantsSuccessNotification {
+                            sendBuildSuccessNotification(representativeBuild, soundEnabled)
+                            newSuccessWorkflows.insert(workflowId)
+                        }
+                        if wantsConfetti {
+                            appState.celebrateProdSuccess(projectLabel: representativeBuild.projectSlug)
+                            newCelebratedSuccess.insert(workflowId)
+                        }
+                    }
+                } catch {
+                    // Ignore API errors, will retry on next poll
                 }
             }
         }
 
-        // Update notified workflows
+        // Update tracked workflows
         appState.notifiedSuccessWorkflows = newSuccessWorkflows
         appState.notifiedFailedWorkflows = newFailedWorkflows
         appState.notifiedStartedWorkflows = newStartedWorkflows
+        appState.celebratedSuccessWorkflows = newCelebratedSuccess
+        appState.playedFailureSoundWorkflows = newPlayedFailureSound
 
         // Check for new pending approvals
-        if preferences.notifyOnPendingApproval {
+        if notificationsEnabled && preferences.notifyOnPendingApproval {
             for approval in currentApprovals {
                 if !previousApprovals.contains(approval.id) {
                     sendPendingApprovalNotification(approval, soundEnabled)

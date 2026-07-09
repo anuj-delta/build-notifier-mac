@@ -394,9 +394,125 @@ struct SettingsView: View {
                 )
                 .disabled(!appState.preferences.vercelNotificationsEnabled)
             }
+
+            celebrationsSection
         }
         .task {
             await notificationManager.checkAuthorizationStatus()
+        }
+    }
+
+    private var celebrationsSection: some View {
+        SettingsSection(
+            title: "Celebrations",
+            subtitle: "Confetti and sound effects for production deploys and failures.",
+            systemImage: "party.popper"
+        ) {
+            SettingsToggleRow(
+                title: "Confetti on production deploy",
+                isOn: Binding(
+                    get: { appState.preferences.celebrateProdSuccess },
+                    set: {
+                        appState.preferences.celebrateProdSuccess = $0
+                        appState.savePreferences()
+                    }
+                ),
+                trailing: {
+                    Button("Test") {
+                        appState.celebrateProdSuccess(projectLabel: "your-org/your-project")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            )
+
+            Divider()
+
+            SettingsPickerRow(title: "Success sound") {
+                soundSelector(
+                    options: CelebrationSound.successBucket,
+                    rawValue: Binding(
+                        get: { appState.preferences.successSound },
+                        set: {
+                            appState.preferences.successSound = $0
+                            appState.savePreferences()
+                        }
+                    ),
+                    fallback: .defaultSuccess
+                )
+            }
+            .disabled(!appState.preferences.celebrateProdSuccess)
+
+            Divider()
+
+            SettingsToggleRow(
+                title: "Play sound on failure",
+                isOn: Binding(
+                    get: { appState.preferences.playFailureSound },
+                    set: {
+                        appState.preferences.playFailureSound = $0
+                        appState.savePreferences()
+                    }
+                )
+            )
+
+            Divider()
+
+            SettingsPickerRow(title: "Failure sound") {
+                soundSelector(
+                    options: CelebrationSound.failureBucket,
+                    rawValue: Binding(
+                        get: { appState.preferences.failureSound },
+                        set: {
+                            appState.preferences.failureSound = $0
+                            appState.savePreferences()
+                        }
+                    ),
+                    fallback: .defaultFailure
+                )
+            }
+            .disabled(!appState.preferences.playFailureSound)
+
+            Divider()
+
+            ProductionBranchesRow(
+                branches: Binding(
+                    get: { appState.preferences.productionBranches },
+                    set: {
+                        appState.preferences.productionBranches = $0
+                        appState.savePreferences()
+                    }
+                )
+            )
+        }
+    }
+
+    private func soundSelector(
+        options: [CelebrationSound],
+        rawValue: Binding<String>,
+        fallback: CelebrationSound
+    ) -> some View {
+        let selected = CelebrationSound(rawValue: rawValue.wrappedValue) ?? fallback
+        return HStack(spacing: 8) {
+            Picker("", selection: Binding(
+                get: { selected },
+                set: { rawValue.wrappedValue = $0.rawValue }
+            )) {
+                ForEach(options, id: \.self) { sound in
+                    Text(sound.displayName).tag(sound)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 170)
+
+            Button {
+                AudioPlayer.shared.preview(selected)
+            } label: {
+                Image(systemName: "speaker.wave.2.fill")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Preview sound")
         }
     }
 
@@ -969,6 +1085,50 @@ private struct SettingsTextRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+    }
+}
+
+private struct ProductionBranchesRow: View {
+    @Binding var branches: [String]
+    @State private var text: String = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                Text("Production branches")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(AppChrome.text)
+
+                Spacer(minLength: 0)
+
+                TextField("main, master", text: $text)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 13))
+                    .frame(width: 220)
+                    .focused($isFocused)
+                    .onSubmit(commit)
+                    .onChange(of: isFocused) { _, focused in
+                        if !focused { commit() }
+                    }
+            }
+
+            Text("Comma-separated. Supports a * wildcard, e.g. release/*")
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(AppChrome.textMuted)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .onAppear { text = branches.joined(separator: ", ") }
+    }
+
+    private func commit() {
+        let parsed = text
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        branches = parsed
+        text = parsed.joined(separator: ", ")
     }
 }
 

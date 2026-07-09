@@ -27,7 +27,13 @@ final class AppState {
     var notifiedSuccessWorkflows: Set<String> = []
     var notifiedFailedWorkflows: Set<String> = []
     var notifiedStartedWorkflows: Set<String> = []
-    
+
+    // Celebration dedup (in-memory; seeded at baseline so relaunch doesn't re-fire)
+    var celebratedSuccessWorkflows: Set<String> = []
+    var playedFailureSoundWorkflows: Set<String> = []
+    var celebratedVercelDeployments: Set<String> = []
+    var playedFailureVercelDeployments: Set<String> = []
+
     // MARK: - User Data (Vercel)
     var vercelUser: VercelUserInfo?
     var vercelTeams: [VercelTeam] = []
@@ -339,6 +345,19 @@ final class AppState {
 
     func checkForUpdates() async {
         availableUpdate = await UpdateChecker.shared.checkForUpdate()
+    }
+
+    // MARK: - Celebrations
+
+    func celebrateProdSuccess(projectLabel: String) {
+        guard preferences.celebrateProdSuccess else { return }
+        AudioPlayer.shared.play(CelebrationSound(rawValue: preferences.successSound) ?? .defaultSuccess)
+        ConfettiPresenter.shared.present(projectLabel: projectLabel)
+    }
+
+    func playFailureSound() {
+        guard preferences.playFailureSound else { return }
+        AudioPlayer.shared.play(CelebrationSound(rawValue: preferences.failureSound) ?? .defaultFailure)
     }
     
     func retryBuild(_ build: Build) async {

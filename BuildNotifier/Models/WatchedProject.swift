@@ -78,7 +78,14 @@ struct UserPreferences: Codable {
     var notifyOnDeploymentReady: Bool
     var notifyOnDeploymentError: Bool
     var selectedVercelTeamId: String?
-    
+
+    // Celebrations (independent of the notification toggles above)
+    var celebrateProdSuccess: Bool
+    var successSound: String
+    var playFailureSound: Bool
+    var failureSound: String
+    var productionBranches: [String]
+
     static let `default` = UserPreferences(
         pollingIntervalSeconds: 60,
         launchAtLogin: false,
@@ -93,7 +100,12 @@ struct UserPreferences: Codable {
         vercelNotificationsEnabled: true,
         notifyOnDeploymentReady: true,
         notifyOnDeploymentError: true,
-        selectedVercelTeamId: nil
+        selectedVercelTeamId: nil,
+        celebrateProdSuccess: true,
+        successSound: CelebrationSound.defaultSuccess.rawValue,
+        playFailureSound: true,
+        failureSound: CelebrationSound.defaultFailure.rawValue,
+        productionBranches: ["main", "master"]
     )
     
     // MARK: - Persistence
@@ -127,6 +139,11 @@ struct UserPreferences: Codable {
                 if let v = partial["notifyOnDeploymentReady"] as? Bool { prefs.notifyOnDeploymentReady = v }
                 if let v = partial["notifyOnDeploymentError"] as? Bool { prefs.notifyOnDeploymentError = v }
                 if let v = partial["selectedVercelTeamId"] as? String { prefs.selectedVercelTeamId = v }
+                if let v = partial["celebrateProdSuccess"] as? Bool { prefs.celebrateProdSuccess = v }
+                if let v = partial["successSound"] as? String { prefs.successSound = v }
+                if let v = partial["playFailureSound"] as? Bool { prefs.playFailureSound = v }
+                if let v = partial["failureSound"] as? String { prefs.failureSound = v }
+                if let v = partial["productionBranches"] as? [String] { prefs.productionBranches = v }
                 if let vercelData = try? JSONSerialization.data(withJSONObject: partial["watchedVercelProjects"] ?? []),
                    let vercelWatched = try? JSONDecoder().decode([WatchedVercelProject].self, from: vercelData) {
                     prefs.watchedVercelProjects = vercelWatched

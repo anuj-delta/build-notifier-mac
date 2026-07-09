@@ -127,27 +127,32 @@ final class VercelPoller: ObservableObject {
         preferences: UserPreferences
     ) async {
         guard let appState = appState else { return }
-        
-        guard preferences.vercelNotificationsEnabled else { return }
-        
+
+        // Celebrations gate only on their own prefs, independent of Vercel notifications.
+        let vercelNotificationsEnabled = preferences.vercelNotificationsEnabled
+        let celebrationsWanted = preferences.celebrateProdSuccess || preferences.playFailureSound
+        guard vercelNotificationsEnabled || celebrationsWanted else { return }
+
         let notificationManager = NotificationManager.shared
         let soundEnabled = preferences.notificationSoundEnabled
-        
+
         var newNotifiedDeployments = appState.notifiedVercelDeployments
-        
+        var newCelebratedDeployments = appState.celebratedVercelDeployments
+        var newPlayedFailureDeployments = appState.playedFailureVercelDeployments
+
         for (projectId, currentDeployments) in current {
             let previousDeployments = previous[projectId] ?? []
-            
+
             for deployment in currentDeployments {
                 let previousDeployment = previousDeployments.first { $0.uid == deployment.uid }
                 let previousStatus = previousDeployment?.deploymentStatus
                 let currentStatus = deployment.deploymentStatus
-                
+                let isNewOrChanged = previousStatus != currentStatus || previousDeployment == nil
+
+                // Notifications (unchanged behavior; keyed by uid+status)
                 let notificationKey = "\(deployment.uid)-\(currentStatus.rawValue)"
-                
-                guard !newNotifiedDeployments.contains(notificationKey) else { continue }
-                
-                if previousStatus != currentStatus || previousDeployment == nil {
+                if vercelNotificationsEnabled, isNewOrChanged,
+                   !newNotifiedDeployments.contains(notificationKey) {
                     if currentStatus.isSuccess && preferences.notifyOnDeploymentReady {
                         notificationManager.sendDeploymentReadyNotification(deployment: deployment, soundEnabled: soundEnabled)
                         newNotifiedDeployments.insert(notificationKey)
@@ -156,25 +161,46 @@ final class VercelPoller: ObservableObject {
                         newNotifiedDeployments.insert(notificationKey)
                     }
                 }
+
+                // Celebrations (own uid-keyed dedup, seeded at baseline)
+                if currentStatus.isSuccess, deployment.isProduction,
+                   preferences.celebrateProdSuccess,
+                   !newCelebratedDeployments.contains(deployment.uid) {
+                    appState.celebrateProdSuccess(projectLabel: deployment.projectName)
+                    newCelebratedDeployments.insert(deployment.uid)
+                }
+                if currentStatus.isFailure, preferences.playFailureSound,
+                   !newPlayedFailureDeployments.contains(deployment.uid) {
+                    appState.playFailureSound()
+                    newPlayedFailureDeployments.insert(deployment.uid)
+                }
             }
         }
-        
+
         appState.notifiedVercelDeployments = newNotifiedDeployments
+        appState.celebratedVercelDeployments = newCelebratedDeployments
+        appState.playedFailureVercelDeployments = newPlayedFailureDeployments
     }
 
     private func establishNotificationBaseline(current: [String: [VercelDeployment]]) {
         guard let appState = appState else { return }
 
         var baselineKeys = Set<String>()
+        var celebratedBaseline = Set<String>()
+        var failureBaseline = Set<String>()
         for (_, deployments) in current {
             for deployment in deployments {
                 let status = deployment.deploymentStatus
                 guard status.isSuccess || status.isFailure else { continue }
                 baselineKeys.insert("\(deployment.uid)-\(status.rawValue)")
+                if status.isSuccess { celebratedBaseline.insert(deployment.uid) }
+                if status.isFailure { failureBaseline.insert(deployment.uid) }
             }
         }
 
         appState.notifiedVercelDeployments = baselineKeys
+        appState.celebratedVercelDeployments = celebratedBaseline
+        appState.playedFailureVercelDeployments = failureBaseline
     }
 }
 
