@@ -253,6 +253,12 @@ struct MenuBarContentView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(MenuPalette.ink)
 
+                if let update = appState.availableUpdate {
+                    UpdatePill(version: update.version) {
+                        openBuildUrl(update.releaseURL.absoluteString)
+                    }
+                }
+
                 Spacer(minLength: 0)
 
                 headerActions
@@ -879,6 +885,39 @@ private struct PendingActionOverlay: View {
             .padding(20)
             .modalSurface(width: 320)
         }
+    }
+}
+
+private struct UpdatePill: View {
+    let version: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Update")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(AppChrome.accent)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule().fill(AppChrome.accentSoft.opacity(isHovered ? 1.6 : 1.0))
+            )
+            .overlay(
+                Capsule().strokeBorder(AppChrome.accent.opacity(0.25), lineWidth: 1)
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .pointingHandCursor()
+        .help("Version \(version) is available - click to view the release")
+        .accessibilityLabel("Update to version \(version)")
     }
 }
 
