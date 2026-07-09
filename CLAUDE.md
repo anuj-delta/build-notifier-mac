@@ -25,6 +25,16 @@ swift package clean
 rm -rf "Build Notifier.app" *.dmg
 ```
 
+## Release Process
+
+Follow this order without asking:
+
+1. Merge the PR into `master` first.
+2. Only then, when cutting a release, bump `VERSION` in `build-app.sh` (this drives the bundle version and the UpdateChecker comparison).
+3. Build/package the release from `master`.
+
+Do not bump the version on a feature branch or before merge, and do not ask whether to bump. Merge first, bump at release time.
+
 ## Debugging
 
 ```bash

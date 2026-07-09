@@ -12,6 +12,22 @@ ICONSET_DIR="BuildNotifier/Assets/AppIcon.iconset"
 ICON_FILE="BuildNotifier/Assets/AppIcon.icns"
 ICON_GENERATOR="scripts/generate-app-icon.swift"
 
+# Load local secrets (e.g. SENTRY_DSN) if present. .env is gitignored.
+if [ -f ".env" ]; then
+    set -a
+    . ./.env
+    set +a
+fi
+
+# Bake the Sentry DSN into Info.plist so the packaged app (which can't read
+# shell env) can report crashes. Omitted entirely when SENTRY_DSN is unset.
+if [ -n "${SENTRY_DSN:-}" ]; then
+    SENTRY_DSN_PLIST="    <key>SentryDSN</key>
+    <string>${SENTRY_DSN}</string>"
+else
+    SENTRY_DSN_PLIST=""
+fi
+
 echo "Building BuildNotifier..."
 swift build -c release
 
@@ -50,10 +66,11 @@ mkdir -p "$RESOURCES_DIR"
 # Copy executable
 cp .build/release/BuildNotifier "$MACOS_DIR/"
 
-# Copy resources bundle if it exists
-if [ -d ".build/release/BuildNotifier_BuildNotifier.bundle" ]; then
-    cp -r .build/release/BuildNotifier_BuildNotifier.bundle "$RESOURCES_DIR/"
-fi
+# Copy every SPM resource bundle (our own plus dependencies like LucideIcons).
+# Missing a dependency's bundle crashes at runtime when its resources load.
+for bundle in .build/release/*.bundle; do
+    [ -e "$bundle" ] && cp -r "$bundle" "$RESOURCES_DIR/"
+done
 
 if [ -f "$ICON_FILE" ]; then
     cp "$ICON_FILE" "$RESOURCES_DIR/AppIcon.icns"
@@ -89,6 +106,7 @@ cat > "$CONTENTS_DIR/Info.plist" << EOF
     <string>Copyright 2025. All rights reserved.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+$SENTRY_DSN_PLIST
 </dict>
 </plist>
 EOF
@@ -113,9 +131,23 @@ else
 fi
 
 echo "Done! App bundle created at: $APP_DIR"
-echo ""
-echo "To install:"
-echo "  cp -r \"$APP_DIR\" /Applications/"
-echo ""
-echo "To run:"
-echo "  open \"$APP_DIR\""
+
+# The repo lives under ~/Documents, so a bundle left here gets registered with
+# LaunchServices and makes macOS prompt for Documents access every launch. By
+# default, install to /Applications and remove the repo copy. build-dmg.sh sets
+# SKIP_INSTALL=1 because it needs the bundle in place to build the DMG.
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+"$LSREGISTER" -u "$PWD/$APP_DIR" >/dev/null 2>&1 || true
+
+if [ "${SKIP_INSTALL:-0}" = "1" ]; then
+    echo ""
+    echo "Left in repo (SKIP_INSTALL=1). To run: open \"$APP_DIR\""
+else
+    echo "Installing to /Applications..."
+    rm -rf "/Applications/$APP_NAME.app"
+    cp -r "$APP_DIR" "/Applications/"
+    "$LSREGISTER" -f "/Applications/$APP_NAME.app" >/dev/null 2>&1 || true
+    rm -rf "$APP_DIR"
+    echo "Installed at /Applications/$APP_NAME.app"
+    echo "To run: open \"/Applications/$APP_NAME.app\""
+fi

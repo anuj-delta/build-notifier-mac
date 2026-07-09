@@ -113,6 +113,18 @@ final class UserPreferencesCelebrationTests: XCTestCase {
         XCTAssertEqual(prefs.successSound, CelebrationSound.defaultSuccess.rawValue)
         XCTAssertEqual(prefs.failureSound, CelebrationSound.defaultFailure.rawValue)
         XCTAssertEqual(prefs.productionBranches, ["main", "master"])
+        XCTAssertTrue(prefs.celebrateDeployedBranches)
+    }
+
+    func testOldSchemaBlobDefaultsDeployedBranchesOn() throws {
+        let legacy: [String: Any] = ["celebrateProdSuccess": false]
+        let data = try JSONSerialization.data(withJSONObject: legacy)
+        UserDefaults.standard.set(data, forKey: "UserPreferences")
+        defer { UserDefaults.standard.removeObject(forKey: "UserPreferences") }
+
+        let loaded = UserPreferences.load()
+        XCTAssertFalse(loaded.celebrateProdSuccess)
+        XCTAssertTrue(loaded.celebrateDeployedBranches)
     }
 
     func testNewSchemaRoundTrips() throws {
@@ -144,5 +156,20 @@ final class UserPreferencesCelebrationTests: XCTestCase {
         XCTAssertTrue(loaded.celebrateProdSuccess)
         XCTAssertEqual(loaded.successSound, CelebrationSound.defaultSuccess.rawValue)
         XCTAssertEqual(loaded.productionBranches, ["main", "master"])
+    }
+}
+
+@MainActor
+final class DeployKeyTests: XCTestCase {
+    func testKeyIsCaseInsensitive() {
+        let triggered = AppState.deployKey(projectSlug: "Delta-Exchange/API-Console", branch: "Feature/My-Branch")
+        let observed = AppState.deployKey(projectSlug: "delta-exchange/api-console", branch: "feature/my-branch")
+        XCTAssertEqual(triggered, observed)
+    }
+
+    func testDifferentBranchesDoNotMatch() {
+        let a = AppState.deployKey(projectSlug: "org/repo", branch: "feature/a")
+        let b = AppState.deployKey(projectSlug: "org/repo", branch: "feature/b")
+        XCTAssertNotEqual(a, b)
     }
 }

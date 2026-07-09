@@ -368,7 +368,9 @@ final class BuildPoller: ObservableObject {
         // Celebrations gate only on their own prefs, so they must be able to run
         // even when notifications are globally disabled.
         let notificationsEnabled = preferences.notificationsEnabled
-        let celebrationsWanted = preferences.celebrateProdSuccess || preferences.playFailureSound
+        let celebrationsWanted = preferences.celebrateProdSuccess
+            || preferences.celebrateDeployedBranches
+            || preferences.playFailureSound
         guard notificationsEnabled || celebrationsWanted else { return }
 
         let soundEnabled = preferences.notificationSoundEnabled
@@ -392,6 +394,20 @@ final class BuildPoller: ObservableObject {
         var newPlayedFailureSound = appState.playedFailureSoundWorkflows
 
         for (workflowId, builds) in buildsByWorkflow {
+            // Confetti and failure sound only fire for branches the user cares
+            // about: production-branch patterns plus branches deployed via the
+            // Deploy-a-Branch modal this session.
+            let branch = builds.first?.branch
+            let isProdBranch = ProductionBranchMatcher.isProduction(
+                branch: branch,
+                patterns: preferences.productionBranches
+            )
+            let isDeployedBranch = branch.map {
+                appState.deployedBranchKeys.contains(
+                    AppState.deployKey(projectSlug: builds.first?.projectSlug ?? "", branch: $0)
+                )
+            } ?? false
+
             // STARTED: Notify once when workflow has any running job
             if notificationsEnabled && preferences.notifyOnBuildStarted {
                 if !appState.notifiedStartedWorkflows.contains(workflowId) {
@@ -412,6 +428,7 @@ final class BuildPoller: ObservableObject {
                     newFailedWorkflows.insert(workflowId)
                 }
                 if preferences.playFailureSound
+                    && (isProdBranch || isDeployedBranch)
                     && !appState.playedFailureSoundWorkflows.contains(workflowId) {
                     appState.playFailureSound()
                     newPlayedFailureSound.insert(workflowId)
@@ -422,12 +439,9 @@ final class BuildPoller: ObservableObject {
             // Uses v2 API to check ALL jobs (v1.1 may omit not-yet-started jobs).
             let wantsSuccessNotification = notificationsEnabled && preferences.notifyOnSuccess
                 && !appState.notifiedSuccessWorkflows.contains(workflowId)
-            let wantsConfetti = preferences.celebrateProdSuccess
-                && !appState.celebratedSuccessWorkflows.contains(workflowId)
-                && ProductionBranchMatcher.isProduction(
-                    branch: builds.first?.branch,
-                    patterns: preferences.productionBranches
-                )
+            let wantsConfetti = !appState.celebratedSuccessWorkflows.contains(workflowId)
+                && ((preferences.celebrateProdSuccess && isProdBranch)
+                    || (preferences.celebrateDeployedBranches && isDeployedBranch))
             if wantsSuccessNotification || wantsConfetti {
                 do {
                     let allJobs = try await fetchWorkflowJobs(workflowId)
@@ -447,7 +461,7 @@ final class BuildPoller: ObservableObject {
                             newSuccessWorkflows.insert(workflowId)
                         }
                         if wantsConfetti {
-                            appState.celebrateProdSuccess(projectLabel: representativeBuild.projectSlug)
+                            appState.celebrate(projectLabel: representativeBuild.projectSlug)
                             newCelebratedSuccess.insert(workflowId)
                         }
                     }
