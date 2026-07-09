@@ -447,14 +447,38 @@ private struct PullRequestBadge: View {
 
     @State private var isHovered = false
 
+    // Lucide "git-pull-request" glyph, bundled as a single vector PDF.
+    private static let icon: NSImage? = {
+        guard let url = Bundle.module.url(forResource: "git-pull-request", withExtension: "pdf"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        image.isTemplate = true
+        return image
+    }()
+
+    @ViewBuilder
+    private var iconView: some View {
+        if let icon = Self.icon {
+            Image(nsImage: icon)
+                .resizable()
+                .renderingMode(.template)
+                .frame(width: 11, height: 11)
+        } else {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.system(size: 10, weight: .semibold))
+        }
+    }
+
     var body: some View {
         Button(action: action) {
-            Text(number.map { "#\($0)" } ?? "PR")
-                .font(.system(size: 11, weight: .medium))
-                .monospacedDigit()
+            HStack(spacing: 4) {
+                iconView
+                Text(number.map { "#\($0)" } ?? "PR")
+                    .font(.system(size: 11, weight: .medium))
+                    .monospacedDigit()
+            }
                 .foregroundStyle(AppChrome.accent)
                 .padding(.horizontal, 7)
-                .padding(.vertical, 1)
+                .padding(.vertical, 2)
                 .background(
                     Capsule()
                         .fill(AppChrome.accentSoft.opacity(isHovered ? 1.6 : 1))
