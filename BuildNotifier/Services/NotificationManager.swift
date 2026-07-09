@@ -8,30 +8,69 @@ import AppKit
 final class NotificationManager: NSObject, ObservableObject {
     static let shared = NotificationManager()
     
-    @Published private(set) var isAuthorized = false
-    
+    @Published private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
+
+    var isAuthorized: Bool {
+        authorizationStatus == .authorized || authorizationStatus == .provisional
+    }
+
+    // Held for the app's lifetime; the singleton is never deallocated.
+    private var activationObserver: NSObjectProtocol?
+
     private override init() {
         super.init()
         UNUserNotificationCenter.current().delegate = self
-    }
-    
-    // MARK: - Authorization
-    
-    func requestAuthorization() async {
-        do {
-            let granted = try await UNUserNotificationCenter.current().requestAuthorization(
-                options: [.alert, .sound, .badge]
-            )
-            isAuthorized = granted
-        } catch {
-            print("Notification authorization error: \(error)")
-            isAuthorized = false
+
+        // Refresh when a Build Notifier window gains focus (e.g. returning from
+        // System Settings). Popover-only usage doesn't activate an .accessory
+        // app, so AppState.refreshNow() also refreshes on popover open.
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.checkAuthorizationStatus()
+            }
         }
     }
-    
+
+    // MARK: - Authorization
+
+    func requestAuthorization() async {
+        do {
+            _ = try await UNUserNotificationCenter.current().requestAuthorization(
+                options: [.alert, .sound, .badge]
+            )
+        } catch {
+            print("Notification authorization error: \(error)")
+        }
+        await checkAuthorizationStatus()
+    }
+
     func checkAuthorizationStatus() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
-        isAuthorized = settings.authorizationStatus == .authorized
+        if authorizationStatus != settings.authorizationStatus {
+            authorizationStatus = settings.authorizationStatus
+        }
+    }
+
+    /// Opens System Settings > Notifications, deep-linked to this app when possible.
+    func openSystemNotificationSettings() {
+        let pane = "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+
+        if let bundleId = Bundle.main.bundleIdentifier,
+           let deepLink = URL(string: "\(pane)?id=\(bundleId)"),
+           NSWorkspace.shared.open(deepLink) {
+            return
+        }
+        if let paneURL = URL(string: pane), NSWorkspace.shared.open(paneURL) {
+            return
+        }
+        // The pane identifier is not public API; fall back to the app itself.
+        if let settingsApp = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.systempreferences") {
+            NSWorkspace.shared.open(settingsApp)
+        }
     }
     
     // MARK: - Send Notifications
@@ -208,14 +247,12 @@ final class NotificationManager: NSObject, ObservableObject {
     
     func sendTestNotification() {
         Task {
-            // Always check/request authorization first
+            // The test exists to verify delivery, so never trust cached state.
+            await checkAuthorizationStatus()
             if !isAuthorized {
                 await requestAuthorization()
             }
-            
-            // Check again after requesting
-            await checkAuthorizationStatus()
-            
+
             guard isAuthorized else {
                 print("Notifications not authorized - please enable in System Settings")
                 return

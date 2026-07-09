@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 private enum SettingsTab: String, CaseIterable, Identifiable {
     case general
@@ -43,6 +44,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @Bindable var appState: AppState
+    @ObservedObject private var notificationManager = NotificationManager.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
 
@@ -221,11 +223,54 @@ struct SettingsView: View {
 
     private var notificationsTab: some View {
         VStack(alignment: .leading, spacing: 20) {
+            if notificationManager.authorizationStatus == .denied {
+                SettingsSection(
+                    title: "Notifications Are Off in macOS",
+                    subtitle: "macOS is blocking notifications from Build Notifier, so no alerts can appear.",
+                    systemImage: "bell.slash"
+                ) {
+                    SettingsTextRow("Open System Settings, turn on \"Allow notifications\" for Build Notifier, then come back — this screen updates when you return.")
+                    Divider()
+                    SettingsButtonStrip {
+                        Button("Open System Settings") {
+                            notificationManager.openSystemNotificationSettings()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                }
+            } else if notificationManager.authorizationStatus == .notDetermined {
+                SettingsSection(
+                    title: "Allow Notifications",
+                    subtitle: "macOS has not asked for notification permission yet.",
+                    systemImage: "bell"
+                ) {
+                    SettingsTextRow("Build Notifier needs macOS permission before it can alert you about builds, approvals, and deployments.")
+                    Divider()
+                    SettingsButtonStrip {
+                        Button("Allow Notifications") {
+                            Task {
+                                await notificationManager.requestAuthorization()
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                }
+            }
+
             SettingsSection(
                 title: "Global",
                 subtitle: "Master notification preferences.",
                 systemImage: "bell.badge"
             ) {
+                SettingsValueRow(
+                    label: "macOS permission",
+                    value: notificationManager.authorizationStatus.settingsDisplayName
+                )
+
+                Divider()
+
                 SettingsToggleRow(
                     title: "Enable notifications",
                     isOn: Binding(
@@ -237,10 +282,11 @@ struct SettingsView: View {
                     ),
                     trailing: {
                         Button("Test") {
-                            NotificationManager.shared.sendTestNotification()
+                            notificationManager.sendTestNotification()
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .disabled(notificationManager.authorizationStatus == .denied)
                     }
                 )
 
@@ -348,6 +394,9 @@ struct SettingsView: View {
                 )
                 .disabled(!appState.preferences.vercelNotificationsEnabled)
             }
+        }
+        .task {
+            await notificationManager.checkAuthorizationStatus()
         }
     }
 
@@ -1116,5 +1165,18 @@ struct WatchedVercelProjectRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+}
+
+private extension UNAuthorizationStatus {
+    var settingsDisplayName: String {
+        switch self {
+        case .authorized: return "Allowed"
+        case .provisional: return "Allowed (quietly)"
+        case .denied: return "Off in System Settings"
+        case .notDetermined: return "Not requested yet"
+        case .ephemeral: return "Temporary"
+        @unknown default: return "Unknown"
+        }
     }
 }
