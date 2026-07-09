@@ -9,7 +9,7 @@ VERSION="1.4.0"
 
 # First build the app
 echo "Building app..."
-./build-app.sh
+SKIP_INSTALL=1 ./build-app.sh
 
 # Create DMG
 echo "Creating DMG..."
