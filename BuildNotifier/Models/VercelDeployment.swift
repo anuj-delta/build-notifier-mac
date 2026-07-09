@@ -13,9 +13,14 @@ struct VercelDeployment: Codable, Identifiable, Equatable {
     let ready: Int?
     let meta: VercelDeploymentMeta?
     let creator: VercelDeploymentCreator?
-    
+    let target: String?
+
     var id: String { uid }
-    
+
+    /// Vercel marks production deployments with `target == "production"`;
+    /// preview deployments have `target == "preview"` or null.
+    var isProduction: Bool { target == "production" }
+
     enum CodingKeys: String, CodingKey {
         case uid
         case name
@@ -27,6 +32,7 @@ struct VercelDeployment: Codable, Identifiable, Equatable {
         case ready
         case meta
         case creator
+        case target
     }
 }
 
