@@ -449,7 +449,7 @@ private struct PullRequestBadge: View {
 
     // Lucide "git-pull-request" glyph, bundled as a single vector PDF.
     private static let icon: NSImage? = {
-        guard let url = Bundle.module.url(forResource: "git-pull-request", withExtension: "pdf"),
+        guard let url = Bundle.appResources.url(forResource: "git-pull-request", withExtension: "pdf"),
               let image = NSImage(contentsOf: url) else { return nil }
         image.isTemplate = true
         return image

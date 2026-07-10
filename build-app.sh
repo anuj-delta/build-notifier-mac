@@ -66,8 +66,10 @@ mkdir -p "$RESOURCES_DIR"
 # Copy executable
 cp .build/release/BuildNotifier "$MACOS_DIR/"
 
-# Copy every SPM resource bundle (our own plus dependencies like LucideIcons).
-# Missing a dependency's bundle crashes at runtime when its resources load.
+# Copy every SPM resource bundle into Contents/Resources. It must stay under
+# Contents/ (not the .app root) or codesign rejects it as unsealed content. The
+# generated Bundle.module accessor only looks for it at the (unsignable) .app
+# root, so the app finds it here via Bundle.appResources instead.
 for bundle in .build/release/*.bundle; do
     [ -e "$bundle" ] && cp -r "$bundle" "$RESOURCES_DIR/"
 done
