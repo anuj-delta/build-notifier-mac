@@ -9,7 +9,7 @@ final class AudioPlayer {
     private var player: AVAudioPlayer?
 
     func play(_ sound: CelebrationSound) {
-        guard let url = Bundle.module.url(forResource: sound.fileName, withExtension: "mp3") else {
+        guard let url = Bundle.appResources.url(forResource: sound.fileName, withExtension: "mp3") else {
             return
         }
         do {
