@@ -394,15 +394,16 @@ final class AppState {
     }
 
     /// Fire confetti + success sound unconditionally. Callers decide whether the
-    /// branch/pref combination warrants a celebration.
-    func celebrate(projectLabel: String) {
+    /// branch/pref combination warrants a celebration and pass the kind so the
+    /// banner reads correctly (production vs devnet).
+    func celebrate(projectLabel: String, kind: CelebrationKind) {
         AudioPlayer.shared.play(CelebrationSound(rawValue: preferences.successSound) ?? .defaultSuccess)
-        ConfettiPresenter.shared.present(projectLabel: projectLabel)
+        ConfettiPresenter.shared.present(projectLabel: projectLabel, kind: kind)
     }
 
     func celebrateProdSuccess(projectLabel: String) {
         guard preferences.celebrateProdSuccess else { return }
-        celebrate(projectLabel: projectLabel)
+        celebrate(projectLabel: projectLabel, kind: .production)
     }
 
     func playFailureSound() {

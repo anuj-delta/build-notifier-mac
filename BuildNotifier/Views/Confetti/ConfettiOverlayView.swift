@@ -1,10 +1,26 @@
 import SwiftUI
 
+/// What a confetti burst is celebrating, which sets the banner headline. A
+/// production deploy and a devnet manual-deploy read differently to the user.
+enum CelebrationKind {
+    case production
+    case devnet
+
+    var headline: String {
+        switch self {
+        case .production: return "Shipped to production"
+        case .devnet: return "Deployed to devnet"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class ConfettiOverlayModel {
     var projectLabels: [String] = []
     var isDismissing = false
+    var headline: String = CelebrationKind.production.headline
+    private var resolvedKind: CelebrationKind?
 
     func addProject(_ label: String) {
         let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -12,9 +28,19 @@ final class ConfettiOverlayModel {
         projectLabels.append(trimmed)
     }
 
+    /// Sets the banner headline for this burst. When bursts coalesce into one
+    /// overlay, a production deploy wins over a devnet deploy.
+    func applyKind(_ kind: CelebrationKind) {
+        if resolvedKind == .production { return }
+        resolvedKind = kind
+        headline = kind.headline
+    }
+
     func reset() {
         projectLabels = []
         isDismissing = false
+        resolvedKind = nil
+        headline = CelebrationKind.production.headline
     }
 }
 
@@ -91,7 +117,7 @@ struct ConfettiOverlayView: View {
                 .font(.system(size: 44, weight: .semibold))
                 .foregroundStyle(AppChrome.success)
 
-            Text("Shipped to production")
+            Text(model.headline)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(AppChrome.textMuted)
 

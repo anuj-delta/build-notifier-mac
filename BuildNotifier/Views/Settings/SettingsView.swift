@@ -419,7 +419,7 @@ struct SettingsView: View {
                 ),
                 trailing: {
                     Button("Test") {
-                        appState.celebrate(projectLabel: "your-org/your-project")
+                        appState.celebrate(projectLabel: "your-org/your-project", kind: .production)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
