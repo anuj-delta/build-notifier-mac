@@ -8,39 +8,33 @@ struct VercelDeploymentRow: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(primaryLabel)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(AppChrome.text)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .shimmering(active: status.isInProgress)
+        HStack(alignment: .top, spacing: 8) {
+            statusGutter
 
-                    if status.isInProgress {
-                        RunningSpinner()
-                    } else {
-                        StatusGlyph(status: status)
-                    }
-                }
-                .frame(maxWidth: labelMaxWidth, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(primaryLabel)
+                    .font(Typography.rowTitle)
+                    .foregroundStyle(AppChrome.text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: labelMaxWidth, alignment: .leading)
+                    .shimmering(active: status.isInProgress)
 
                 HStack(spacing: 5) {
                     if let author = deployment.authorDisplayName {
                         Text(author)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(AppChrome.text.opacity(0.75))
+                            .font(Typography.rowAuthor)
+                            .foregroundStyle(AppChrome.textSecondary)
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
 
                         Text("·")
-                            .font(.system(size: 12, weight: .regular))
+                            .font(Typography.rowMeta)
                             .foregroundStyle(AppChrome.textMuted)
                     }
 
                     Text(deployment.truncatedCommitMessage)
-                        .font(.system(size: 12, weight: .regular))
+                        .font(Typography.rowMeta)
                         .foregroundStyle(AppChrome.textMuted)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -48,22 +42,17 @@ struct VercelDeploymentRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: 0)
-
             Text(deployment.relativeTime)
-                .font(.system(size: 12, weight: .regular))
+                .font(Typography.rowMeta)
                 .foregroundStyle(AppChrome.textMuted)
-                .frame(width: 58, alignment: .trailing)
+                .frame(width: RowLayout.trailingColumnWidth, alignment: .trailing)
                 .monospacedDigit()
         }
-        .padding(.leading, 0)
-        .padding(.trailing, 12)
+        .padding(.horizontal, 8)
         .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous)
                 .fill(isHovered ? AppChrome.rowHover : Color.clear)
-                .padding(.leading, -8)
-                .padding(.trailing, -4)
         )
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -77,6 +66,19 @@ struct VercelDeploymentRow: View {
 
     private var status: RowStatus {
         RowStatus(deployment.deploymentStatus)
+    }
+
+    /// Matches `BuildRow` so CircleCI and Vercel rows share one leading status column.
+    private var statusGutter: some View {
+        Group {
+            if status.isInProgress {
+                RunningSpinner()
+            } else {
+                StatusGlyph(status: status)
+            }
+        }
+        .frame(width: RowLayout.statusColumnWidth, alignment: .center)
+        .padding(.top, 1)
     }
 
     private var primaryLabel: String {
@@ -107,7 +109,7 @@ struct VercelProjectSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.16)) {
+                withAnimation(Motion.spring) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -153,11 +155,6 @@ struct VercelProjectSection: View {
                     .padding(.bottom, 4)
                 }
             }
-        }
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppChrome.separator)
-                .frame(height: 1)
         }
     }
 }

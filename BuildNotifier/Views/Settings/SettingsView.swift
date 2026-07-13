@@ -419,7 +419,7 @@ struct SettingsView: View {
                 ),
                 trailing: {
                     Button("Test") {
-                        appState.celebrate(projectLabel: "your-org/your-project")
+                        appState.celebrate(projectLabel: "your-org/your-project", kind: .production)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -929,7 +929,7 @@ private struct SidebarStatusRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(isActive ? .green : AppChrome.separator)
+                .fill(isActive ? AppChrome.success : AppChrome.separator)
                 .frame(width: 8, height: 8)
 
             Text(title)

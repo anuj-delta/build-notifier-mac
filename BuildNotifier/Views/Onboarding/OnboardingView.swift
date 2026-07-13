@@ -60,17 +60,17 @@ struct OnboardingView: View {
             if showError, let error = appState.error {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(AppChrome.warning)
                     Text(error)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(AppChrome.danger)
                         .multilineTextAlignment(.leading)
                 }
                 .font(.caption)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                .background(Color.red.opacity(0.08))
-                .cornerRadius(10)
+                .background(AppChrome.danger.opacity(0.08))
+                .cornerRadius(AppChrome.radiusLarge)
             }
 
             VStack(spacing: 10) {

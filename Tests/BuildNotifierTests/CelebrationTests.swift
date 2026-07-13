@@ -159,6 +159,36 @@ final class UserPreferencesCelebrationTests: XCTestCase {
     }
 }
 
+final class CelebrationKindTests: XCTestCase {
+    func testHeadlinesMatchTheDeployTarget() {
+        XCTAssertEqual(CelebrationKind.production.headline, "Shipped to production")
+        XCTAssertEqual(CelebrationKind.devnet.headline, "Deployed to devnet")
+    }
+}
+
+@MainActor
+final class ConfettiOverlayModelTests: XCTestCase {
+    func testHeadlineReflectsKind() {
+        let model = ConfettiOverlayModel()
+        model.applyKind(.devnet)
+        XCTAssertEqual(model.headline, "Deployed to devnet")
+    }
+
+    func testProductionWinsWhenBurstsCoalesce() {
+        let model = ConfettiOverlayModel()
+        model.applyKind(.production)
+        model.applyKind(.devnet)
+        XCTAssertEqual(model.headline, "Shipped to production")
+    }
+
+    func testResetRestoresDefaultHeadline() {
+        let model = ConfettiOverlayModel()
+        model.applyKind(.devnet)
+        model.reset()
+        XCTAssertEqual(model.headline, "Shipped to production")
+    }
+}
+
 @MainActor
 final class DeployKeyTests: XCTestCase {
     func testKeyIsCaseInsensitive() {

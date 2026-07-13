@@ -39,6 +39,7 @@ private struct PointingHandCursor: ViewModifier {
 struct ProjectSection: View {
     let project: WatchedProject
     let buildsByBranch: [String: [Build]]
+    let deployedBranch: String?
     let isFiltered: Bool
     let approvalCapableWorkflowIds: Set<String>
     let armedAutoApprovalWorkflowIds: Set<String>
@@ -94,7 +95,7 @@ struct ProjectSection: View {
         }
         .pointingHandCursor()
         .help("Open repository on the web")
-        .animation(.easeOut(duration: 0.12), value: isRepoLinkHovered)
+        .animation(Motion.hover, value: isRepoLinkHovered)
     }
 
     private var deployButton: some View {
@@ -121,13 +122,13 @@ struct ProjectSection: View {
         }
         .pointingHandCursor()
         .help("Deploy a branch to devnet")
-        .animation(.easeOut(duration: 0.12), value: isDeployHovered)
+        .animation(Motion.hover, value: isDeployHovered)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.16)) {
+                withAnimation(Motion.spring) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -160,7 +161,7 @@ struct ProjectSection: View {
             .onHover { hovering in
                 isHeaderHovered = hovering
             }
-            .animation(.easeOut(duration: 0.12), value: isHeaderHovered)
+            .animation(Motion.hover, value: isHeaderHovered)
             .contextMenu {
                 Button("Deploy a Branch…") { onDeploy(project) }
                 if let repoUrl {
@@ -177,6 +178,7 @@ struct ProjectSection: View {
                                 build: build,
                                 canAutoApprove: workflowId.map { approvalCapableWorkflowIds.contains($0) } ?? false,
                                 isAutoApproveArmed: workflowId.map { armedAutoApprovalWorkflowIds.contains($0) } ?? false,
+                                isDevnetDeployed: deployedBranch.map { !$0.isEmpty && build.branch == $0 } ?? false,
                                 onRetry: { onRetry(build) },
                                 onCancel: { onCancel(build) },
                                 onAutoApprove: { onArmAutoApprove(build) },
@@ -194,29 +196,24 @@ struct ProjectSection: View {
                 .padding(.bottom, 4)
             }
         }
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppChrome.separator)
-                .frame(height: 1)
-        }
     }
 
     private var sortedBranches: [String] {
         buildsByBranch.keys.sorted { b1, b2 in
-            let date1 = buildsByBranch[b1]?.first?.activityDate ?? .distantPast
-            let date2 = buildsByBranch[b2]?.first?.activityDate ?? .distantPast
+            let date1 = buildsByBranch[b1]?.compactMap { $0.activityDate }.max() ?? .distantPast
+            let date2 = buildsByBranch[b2]?.compactMap { $0.activityDate }.max() ?? .distantPast
             return date1 > date2
         }
     }
 }
 
 struct BuildRow: View {
-    private let trailingColumnWidth: CGFloat = 62
     private let trailingActionRowHeight: CGFloat = 14
 
     let build: Build
     let canAutoApprove: Bool
     let isAutoApproveArmed: Bool
+    let isDevnetDeployed: Bool
     let onRetry: () -> Void
     let onCancel: () -> Void
     let onAutoApprove: () -> Void
@@ -230,82 +227,88 @@ struct BuildRow: View {
         Button {
             onOpen()
         } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(build.branch ?? "unknown")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(AppChrome.text)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .shimmering(active: status.isInProgress)
+            HStack(alignment: .top, spacing: 8) {
+                statusGutter
 
-                            if status.isInProgress {
-                                RunningSpinner()
-                            } else {
-                                StatusGlyph(status: status)
-                            }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(build.branch ?? "unknown")
+                            .font(Typography.rowTitle)
+                            .foregroundStyle(AppChrome.text)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .shimmering(active: status.isInProgress)
 
-                            if build.pullRequestUrl != nil {
-                                PullRequestBadge(number: build.pullRequestNumber, action: onOpenPR)
-                            }
-
-                            if isAutoApproveArmed {
-                                Text("Auto")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(AppChrome.accent)
-                                    .fixedSize(horizontal: true, vertical: false)
-                            }
-
-                            if let branch = build.branch, !branch.isEmpty {
-                                CopyBranchButton(branch: branch, isRowHovered: isHovered)
-                            }
-
-                            Spacer(minLength: 0)
+                        if build.pullRequestUrl != nil {
+                            PullRequestBadge(number: build.pullRequestNumber, action: onOpenPR)
                         }
 
-                        HStack(spacing: 5) {
-                            if let author = build.authorDisplayName {
-                                Text(author)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(AppChrome.text.opacity(0.75))
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
+                        if isAutoApproveArmed {
+                            Text("Auto")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(AppChrome.accent)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
 
-                                Text("·")
-                                    .font(.system(size: 12, weight: .regular))
-                                    .foregroundStyle(AppChrome.textMuted)
-                            }
+                        if let branch = build.branch, !branch.isEmpty {
+                            CopyBranchButton(branch: branch, isRowHovered: isHovered)
+                        }
 
-                            Text(build.truncatedSubject)
-                                .font(.system(size: 12, weight: .regular))
+                        Spacer(minLength: 0)
+                    }
+
+                    HStack(spacing: 5) {
+                        if let author = build.authorDisplayName {
+                            Text(author)
+                                .font(Typography.rowAuthor)
+                                .foregroundStyle(AppChrome.textSecondary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+
+                            Text("·")
+                                .font(Typography.rowMeta)
                                 .foregroundStyle(AppChrome.textMuted)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
                         }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    VStack(alignment: .trailing, spacing: 6) {
-                        Text(build.relativeTime)
-                            .font(.system(size: 12, weight: .regular))
+                        Text(build.truncatedSubject)
+                            .font(Typography.rowMeta)
                             .foregroundStyle(AppChrome.textMuted)
-                            .monospacedDigit()
-
-                        if hasActions {
-                            trailingActions
-                                .frame(height: trailingActionRowHeight)
-                                .opacity(isHovered || isAutoApproveArmed ? 1 : 0)
-                                .allowsHitTesting(isHovered || isAutoApproveArmed)
-                        }
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
-                    .frame(width: trailingColumnWidth, alignment: .trailing)
                 }
-                .padding(.leading, 0)
-                .padding(.trailing, 12)
-                .padding(.vertical, 9)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .trailing, spacing: 6) {
+                    Text(build.relativeTime)
+                        .font(Typography.rowMeta)
+                        .foregroundStyle(AppChrome.textMuted)
+                        .monospacedDigit()
+
+                    // One second slot: the devnet badge sits here, and the hover
+                    // actions swap into the same place. Stacking both would grow
+                    // the row past its two text lines and leave the action button
+                    // floating below the row.
+                    if isDevnetDeployed || hasActions {
+                        ZStack(alignment: .trailing) {
+                            if isDevnetDeployed {
+                                devnetIndicator
+                                    .opacity(showActions ? 0 : 1)
+                            }
+                            if hasActions {
+                                trailingActions
+                                    .frame(height: trailingActionRowHeight)
+                                    .opacity(showActions ? 1 : 0)
+                                    .allowsHitTesting(showActions)
+                            }
+                        }
+                        .animation(Motion.hover, value: showActions)
+                    }
+                }
+                .frame(width: RowLayout.trailingColumnWidth, alignment: .trailing)
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 9)
             .background(rowBackground)
             .contentShape(Rectangle())
         }
@@ -318,6 +321,33 @@ struct BuildRow: View {
 
     private var status: RowStatus {
         RowStatus(build.buildStatus)
+    }
+
+    /// Fixed-width leading column so status glyphs line up across every row and
+    /// the list can be scanned pass/fail at a glance. Nudged down to sit on the
+    /// branch line's cap height.
+    private var statusGutter: some View {
+        Group {
+            if status.isInProgress {
+                RunningSpinner()
+            } else {
+                StatusGlyph(status: status)
+            }
+        }
+        .frame(width: RowLayout.statusColumnWidth, alignment: .center)
+        .padding(.top, 1)
+    }
+
+    private var devnetIndicator: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "hexagon.fill")
+                .font(.system(size: 8, weight: .semibold))
+            Text("devnet")
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .foregroundStyle(AppChrome.deploy)
+        .fixedSize(horizontal: true, vertical: false)
+        .help("Currently deployed to devnet")
     }
 
     private var trailingActions: some View {
@@ -376,10 +406,8 @@ struct BuildRow: View {
     }
 
     private var rowBackground: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
+        RoundedRectangle(cornerRadius: AppChrome.radiusMedium, style: .continuous)
             .fill(rowFill)
-            .padding(.leading, -8)
-            .padding(.trailing, -4)
     }
 
     private var rowFill: Color {
@@ -389,6 +417,11 @@ struct BuildRow: View {
 
     private var hasActions: Bool {
         build.buildStatus.isFailure || build.buildStatus.isRunning || canAutoApprove || isAutoApproveArmed
+    }
+
+    /// Actions are revealed on hover, or kept visible while auto-approve is armed.
+    private var showActions: Bool {
+        isHovered || isAutoApproveArmed
     }
 
 }

@@ -172,7 +172,7 @@ final class BuildPoller: ObservableObject {
                             project.vcsType,
                             project.orgName,
                             project.repoName,
-                            30
+                            100
                         )
                         
                         // Filter to user's builds if needed
@@ -439,9 +439,12 @@ final class BuildPoller: ObservableObject {
             // Uses v2 API to check ALL jobs (v1.1 may omit not-yet-started jobs).
             let wantsSuccessNotification = notificationsEnabled && preferences.notifyOnSuccess
                 && !appState.notifiedSuccessWorkflows.contains(workflowId)
-            let wantsConfetti = !appState.celebratedSuccessWorkflows.contains(workflowId)
-                && ((preferences.celebrateProdSuccess && isProdBranch)
-                    || (preferences.celebrateDeployedBranches && isDeployedBranch))
+            let celebrationKind: CelebrationKind? =
+                (preferences.celebrateProdSuccess && isProdBranch) ? .production
+                : (preferences.celebrateDeployedBranches && isDeployedBranch) ? .devnet
+                : nil
+            let wantsConfetti = celebrationKind != nil
+                && !appState.celebratedSuccessWorkflows.contains(workflowId)
             if wantsSuccessNotification || wantsConfetti {
                 do {
                     let allJobs = try await fetchWorkflowJobs(workflowId)
@@ -460,9 +463,17 @@ final class BuildPoller: ObservableObject {
                             sendBuildSuccessNotification(representativeBuild, soundEnabled)
                             newSuccessWorkflows.insert(workflowId)
                         }
-                        if wantsConfetti {
-                            appState.celebrate(projectLabel: representativeBuild.projectSlug)
+                        if wantsConfetti, let celebrationKind {
+                            appState.celebrate(projectLabel: representativeBuild.projectSlug, kind: celebrationKind)
                             newCelebratedSuccess.insert(workflowId)
+                            // One modal deploy = one celebration: consume the
+                            // deployed-branch marker so later workflows on the same
+                            // branch don't re-celebrate. Re-deploying re-arms it.
+                            if celebrationKind == .devnet, let branch {
+                                appState.deployedBranchKeys.remove(
+                                    AppState.deployKey(projectSlug: representativeBuild.projectSlug, branch: branch)
+                                )
+                            }
                         }
                     }
                 } catch {
