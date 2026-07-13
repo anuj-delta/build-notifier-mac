@@ -42,6 +42,18 @@ final class BuildPoller: ObservableObject {
     private let sendPendingApprovalNotification: (PendingApproval, Bool) -> Void
     private var cachedPipelineIdByWorkflowId: [String: String] = [:]
     private var cachedActorByPipelineId: [String: PipelineActorCacheValue] = [:]
+    private var cachedTerminalWorkflowStatusById: [String: String] = [:]
+
+    /// v2 workflow statuses that never change again, so they can be cached across polls.
+    /// `running`, `on_hold`, `not_run`, and `failing` are transient and always refetched.
+    private static let terminalWorkflowStatuses: Set<String> = ["success", "failed", "error", "canceled", "unauthorized"]
+
+    /// Cap on how many recent devnet-deploy workflows to probe per project when resolving
+    /// the live branch. The live deploy is effectively always among the newest few.
+    private static let maxDevnetWorkflowChecks = 8
+
+    /// Upper bound on the terminal-status cache so memory stays flat across a long session.
+    private static let maxCachedWorkflowStatuses = 500
     
     weak var appState: AppState?
     
@@ -278,6 +290,16 @@ final class BuildPoller: ObservableObject {
         self.cachedActorByPipelineId = mergedPipelineActors
         lastPollTime = Date()
 
+        // Merge rather than replace: a devnet deploy stays live until a newer one
+        // succeeds, so a project that yields no fresh success this poll (or whose v2
+        // status fetch transiently failed) keeps its last known branch instead of
+        // having the badge flicker off.
+        let resolvedDeploys = await resolveDevnetDeployedBranches(
+            buildsByProject: newBuildsByProject,
+            productionBranches: appState.preferences.productionBranches
+        )
+        appState.devnetDeployedBranchBySlug.merge(resolvedDeploys) { _, new in new }
+
         if !hasEstablishedBaseline {
             await establishNotificationBaseline(
                 current: newBuildsByProject,
@@ -298,6 +320,59 @@ final class BuildPoller: ObservableObject {
         
         // Update notified approvals
         appState.notifiedApprovals = Set(newPendingApprovals.map { $0.id })
+    }
+
+    /// For each project, the branch live on devnet: the newest devnet-deploy workflow whose
+    /// v2 rollup status is `success`. v1.1 can't distinguish a pending deploy from a finished
+    /// one, so the completion check is the workflow status CircleCI itself reports.
+    private func resolveDevnetDeployedBranches(
+        buildsByProject: [String: [Build]],
+        productionBranches: [String]
+    ) async -> [String: String] {
+        await withTaskGroup(of: (slug: String, branch: String)?.self) { group in
+            for (slug, builds) in buildsByProject {
+                let candidates = AppState.devnetDeployWorkflowsNewestFirst(
+                    builds: builds,
+                    productionBranches: productionBranches
+                )
+                group.addTask { @MainActor in
+                    for candidate in candidates.prefix(Self.maxDevnetWorkflowChecks) {
+                        if await self.workflowStatus(candidate.workflowId) == "success" {
+                            return (slug, candidate.branch)
+                        }
+                    }
+                    if candidates.count > Self.maxDevnetWorkflowChecks {
+                        print("[BuildPoller] \(slug): no successful devnet deploy in newest \(Self.maxDevnetWorkflowChecks) workflows; older ones not probed")
+                    }
+                    return nil
+                }
+            }
+            var result: [String: String] = [:]
+            for await found in group {
+                if let found { result[found.slug] = found.branch }
+            }
+            return result
+        }
+    }
+
+    /// v2 workflow rollup status, caching terminal results so finished workflows aren't
+    /// refetched on later polls. Returns nil on fetch error (caller treats as not-deployed).
+    private func workflowStatus(_ workflowId: String) async -> String? {
+        if let cached = cachedTerminalWorkflowStatusById[workflowId] { return cached }
+        do {
+            let status = try await fetchWorkflow(workflowId).status
+            if let status, Self.terminalWorkflowStatuses.contains(status) {
+                // Bounded so a long-running session can't accumulate an entry per
+                // workflow ever seen; on overflow we drop the cache and refetch lazily.
+                if cachedTerminalWorkflowStatusById.count >= Self.maxCachedWorkflowStatuses {
+                    cachedTerminalWorkflowStatusById.removeAll(keepingCapacity: true)
+                }
+                cachedTerminalWorkflowStatusById[workflowId] = status
+            }
+            return status
+        } catch {
+            return nil
+        }
     }
 
     private func establishNotificationBaseline(

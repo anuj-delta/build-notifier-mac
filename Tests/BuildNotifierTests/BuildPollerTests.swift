@@ -193,6 +193,79 @@ final class BuildPollerTests: XCTestCase {
         XCTAssertEqual(trackedBuilds.map(\.branch), ["main", "develop", "feat/my-work", "feat/teammate-work"])
     }
 
+    // MARK: - Devnet deployed branch (v2 workflow status)
+
+    func testDevnetDeployedBranchIsNewestSuccessfulWorkflow() async {
+        let builds = [
+            makeBuild(buildNum: 10, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-old", startTime: "2026-03-24T09:00:00Z"),
+            makeBuild(buildNum: 11, branch: "feat/dea-367", committerName: "Anuj Sharma", committerEmail: "anuj.sharma@delta.exchange", workflowId: "wf-new", workflowName: "devnet-manual-deploy", startTime: "2026-03-24T10:00:00Z")
+        ]
+        let statuses = ["wf-old": "success", "wf-new": "success"]
+        let appState = await runPollResolvingDeploys(builds: builds, statuses: statuses)
+        XCTAssertEqual(appState.devnetDeployedBranch(forSlug: Self.slug), "feat/dea-367")
+    }
+
+    func testCanceledLatestFallsBackToEarlierSuccess() async {
+        // Newest develop deploy was canceled; the prior successful one is still live.
+        let builds = [
+            makeBuild(buildNum: 10, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-old", startTime: "2026-03-24T09:00:00Z"),
+            makeBuild(buildNum: 11, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-new", startTime: "2026-03-24T10:00:00Z")
+        ]
+        let statuses = ["wf-old": "success", "wf-new": "canceled"]
+        let appState = await runPollResolvingDeploys(builds: builds, statuses: statuses)
+        XCTAssertEqual(appState.devnetDeployedBranch(forSlug: Self.slug), "develop")
+    }
+
+    func testRunningDeployIsNotReportedAsDeployed() async {
+        // The only deploy is still running -> nothing is live on devnet yet.
+        let builds = [
+            makeBuild(buildNum: 11, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-run", startTime: "2026-03-24T10:00:00Z")
+        ]
+        let statuses = ["wf-run": "running"]
+        let appState = await runPollResolvingDeploys(builds: builds, statuses: statuses)
+        XCTAssertNil(appState.devnetDeployedBranch(forSlug: Self.slug))
+    }
+
+    func testTerminalWorkflowStatusIsCachedAcrossPolls() async {
+        let builds = [
+            makeBuild(buildNum: 11, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-dep", startTime: "2026-03-24T10:00:00Z")
+        ]
+        var statusFetches: [String: Int] = [:]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                statusFetches[workflowId, default: 0] += 1
+                return WorkflowDetails(id: workflowId, name: "build-and-deploy", status: "success", pipelineId: "pipeline-\(workflowId)")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+        await poller.checkNow()
+
+        XCTAssertEqual(appState.devnetDeployedBranch(forSlug: Self.slug), "develop")
+        // success is terminal, so the workflow status is fetched once and cached.
+        XCTAssertEqual(statusFetches["wf-dep"], 1)
+    }
+
+    private func runPollResolvingDeploys(builds: [Build], statuses: [String: String]) async -> AppState {
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "build-and-deploy", status: statuses[workflowId], pipelineId: "pipeline-\(workflowId)")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+        await poller.checkNow()
+        return appState
+    }
+
+    private static let slug = "delta-exchange/api-console"
+
     private func makeAppState(poller: BuildPoller, followMode: FollowMode) -> AppState {
         let appState = AppState(poller: poller, vercelPoller: VercelPoller(), autoApprovalPoller: AutoApprovalPoller())
         appState.currentUser = User(
@@ -219,7 +292,9 @@ final class BuildPollerTests: XCTestCase {
         branch: String,
         committerName: String,
         committerEmail: String,
-        workflowId: String
+        workflowId: String,
+        workflowName: String = "build-and-deploy",
+        startTime: String = "2026-03-24T10:00:00Z"
     ) -> Build {
         Build(
             vcsUrl: "https://github.com/delta-exchange/api-console",
@@ -234,8 +309,8 @@ final class BuildPollerTests: XCTestCase {
             subject: "Commit \(buildNum)",
             body: nil,
             why: "github",
-            queuedAt: "2026-03-24T10:00:00Z",
-            startTime: "2026-03-24T10:00:00Z",
+            queuedAt: startTime,
+            startTime: startTime,
             stopTime: "2026-03-24T10:05:00Z",
             buildTimeMillis: 300000,
             username: "delta-exchange",
@@ -247,7 +322,7 @@ final class BuildPollerTests: XCTestCase {
             workflows: WorkflowInfo(
                 jobName: "job-\(buildNum)",
                 workflowId: workflowId,
-                workflowName: "build-and-deploy"
+                workflowName: workflowName
             ),
             pullRequests: nil
         )

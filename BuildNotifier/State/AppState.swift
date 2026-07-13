@@ -241,16 +241,39 @@ final class AppState {
         return true
     }
 
+    /// The branch currently live on devnet per project, resolved during polling from the
+    /// authoritative v2 workflow rollup status (the same status CircleCI's own pipeline list
+    /// shows). Keyed by project slug. Populated by `BuildPoller`.
+    var devnetDeployedBranchBySlug: [String: String] = [:]
+
     /// The branch currently live on devnet for a project: the branch of the most recent
-    /// successful devnet deploy. A running deploy hasn't replaced the live version yet, so
-    /// only successful builds count.
+    /// devnet deploy whose whole workflow succeeded. v1.1 alone can't tell a still-pending
+    /// deploy from a finished one (it omits `not_run` jobs), so the completed-success check
+    /// runs against the v2 workflow status in `BuildPoller` and the result is cached here.
     func devnetDeployedBranch(forSlug slug: String) -> String? {
-        let builds = buildsByProject[slug] ?? []
-        let productionBranches = preferences.productionBranches
-        return builds
-            .filter { $0.buildStatus.isSuccess && Self.isDevnetDeploy($0, productionBranches: productionBranches) }
-            .max { ($0.activityDate ?? .distantPast) < ($1.activityDate ?? .distantPast) }?
-            .branch
+        devnetDeployedBranchBySlug[slug]
+    }
+
+    /// Unique devnet-deploy workflows for a project's builds, newest first. Callers probe
+    /// these against the v2 workflow status and take the newest one that reads `success`.
+    static func devnetDeployWorkflowsNewestFirst(
+        builds: [Build],
+        productionBranches: [String]
+    ) -> [(workflowId: String, branch: String)] {
+        var latestByWorkflow: [String: Build] = [:]
+        for build in builds where isDevnetDeploy(build, productionBranches: productionBranches) {
+            guard let workflowId = build.workflows?.workflowId else { continue }
+            if let existing = latestByWorkflow[workflowId],
+               (existing.activityDate ?? .distantPast) >= (build.activityDate ?? .distantPast) {
+                continue
+            }
+            latestByWorkflow[workflowId] = build
+        }
+        return latestByWorkflow
+            .sorted { ($0.value.activityDate ?? .distantPast) > ($1.value.activityDate ?? .distantPast) }
+            .compactMap { workflowId, build in
+                build.branch.map { (workflowId: workflowId, branch: $0) }
+            }
     }
 
     // MARK: - Actions
@@ -454,9 +477,23 @@ final class AppState {
             branch: branch,
             parameters: params
         )
-        deployedBranchKeys.insert(Self.deployKey(projectSlug: project.slug, branch: branch))
+        markBranchDeployed(projectSlug: project.slug, branch: branch)
         schedulePostTriggerRefresh()
         return pipeline
+    }
+
+    /// Arm the deployed-branch marker so the next successful pipeline on this
+    /// branch celebrates. Re-arming would otherwise let an already-completed
+    /// workflow from a prior deploy fire confetti on the next poll, so baseline
+    /// every workflow currently known for the branch as handled: only the
+    /// freshly triggered pipeline can celebrate.
+    func markBranchDeployed(projectSlug: String, branch: String) {
+        deployedBranchKeys.insert(Self.deployKey(projectSlug: projectSlug, branch: branch))
+        let branchKey = branch.lowercased()
+        let existingWorkflowIds = (buildsByProject[projectSlug] ?? [])
+            .filter { $0.branch?.lowercased() == branchKey }
+            .compactMap { $0.workflows?.workflowId }
+        celebratedSuccessWorkflows.formUnion(existingWorkflowIds)
     }
 
     /// Delays (seconds) for the follow-up polls after a trigger. Overridable in tests.
