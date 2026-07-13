@@ -40,6 +40,7 @@ struct ProjectSection: View {
     let project: WatchedProject
     let buildsByBranch: [String: [Build]]
     let deployedBranch: String?
+    let workflowStatusByWorkflowId: [String: String]
     let isFiltered: Bool
     let approvalCapableWorkflowIds: Set<String>
     let armedAutoApprovalWorkflowIds: Set<String>
@@ -176,6 +177,7 @@ struct ProjectSection: View {
                             let workflowId = build.workflows?.workflowId
                             BuildRow(
                                 build: build,
+                                resolvedWorkflowStatus: workflowId.flatMap { workflowStatusByWorkflowId[$0] },
                                 canAutoApprove: workflowId.map { approvalCapableWorkflowIds.contains($0) } ?? false,
                                 isAutoApproveArmed: workflowId.map { armedAutoApprovalWorkflowIds.contains($0) } ?? false,
                                 isDevnetDeployed: deployedBranch.map { !$0.isEmpty && build.branch == $0 } ?? false,
@@ -211,6 +213,7 @@ struct BuildRow: View {
     private let trailingActionRowHeight: CGFloat = 14
 
     let build: Build
+    let resolvedWorkflowStatus: String?
     let canAutoApprove: Bool
     let isAutoApproveArmed: Bool
     let isDevnetDeployed: Bool
@@ -319,8 +322,14 @@ struct BuildRow: View {
         .pointingHandCursor()
     }
 
+    /// Prefer the authoritative v2 workflow status (matches CircleCI's UI); fall back to the
+    /// v1.1 build status when v2 isn't resolved yet or reports a value we don't recognize.
     private var status: RowStatus {
-        RowStatus(build.buildStatus)
+        if let resolvedWorkflowStatus,
+           let v2Status = RowStatus(circleCIWorkflowStatus: resolvedWorkflowStatus) {
+            return v2Status
+        }
+        return RowStatus(build.buildStatus)
     }
 
     /// Fixed-width leading column so status glyphs line up across every row and

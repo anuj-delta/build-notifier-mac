@@ -44,6 +44,12 @@ final class BuildPoller: ObservableObject {
     private var cachedActorByPipelineId: [String: PipelineActorCacheValue] = [:]
     private var cachedTerminalWorkflowStatusById: [String: String] = [:]
 
+    /// Per-poll cache of every v2 status fetched this cycle, including non-terminal ones.
+    /// A workflow can be both a devnet-deploy candidate and an on-screen row; the two
+    /// resolvers run sequentially, so the first warms this and the second reuses it instead
+    /// of making a second round-trip for a still-running workflow. Reset at each poll start.
+    private var workflowStatusThisPoll: [String: String] = [:]
+
     /// v2 workflow statuses that never change again, so they can be cached across polls.
     /// `running`, `on_hold`, `not_run`, and `failing` are transient and always refetched.
     private static let terminalWorkflowStatuses: Set<String> = ["success", "failed", "error", "canceled", "unauthorized"]
@@ -153,7 +159,9 @@ final class BuildPoller: ObservableObject {
         }
         
         error = nil
-        
+
+        workflowStatusThisPoll.removeAll(keepingCapacity: true)
+
         // Store previous builds for comparison
         let previousBuilds = appState.buildsByProject
         
@@ -300,6 +308,22 @@ final class BuildPoller: ObservableObject {
         )
         appState.devnetDeployedBranchBySlug.merge(resolvedDeploys) { _, new in new }
 
+        // Resolve the authoritative v2 status for each on-screen row's workflow. v1.1 build
+        // status lags v2, so a finished workflow can still report a running job for a short
+        // window; the row trusts v2 when available and falls back to v1.1 otherwise.
+        let representativeWorkflowIds = Set(
+            appState.groupedBuilds
+                .flatMap { $0.builds.values }
+                .compactMap { $0.first?.workflows?.workflowId }
+        )
+        let resolvedStatuses = await resolveWorkflowStatuses(workflowIds: representativeWorkflowIds)
+        // Keep the last-known status for an on-screen workflow whose v2 fetch failed this
+        // poll (so the row doesn't flicker back to v1.1), but drop workflows that scrolled
+        // off screen so the map stays bounded to what's displayed.
+        var mergedStatuses = appState.workflowStatusByWorkflowId.filter { representativeWorkflowIds.contains($0.key) }
+        mergedStatuses.merge(resolvedStatuses) { _, new in new }
+        appState.workflowStatusByWorkflowId = mergedStatuses
+
         if !hasEstablishedBaseline {
             await establishNotificationBaseline(
                 current: newBuildsByProject,
@@ -355,19 +379,42 @@ final class BuildPoller: ObservableObject {
         }
     }
 
+    /// v2 rollup status per workflow id, resolved in parallel and reusing the terminal-status
+    /// cache. Workflows whose status can't be fetched this poll are omitted, so the row falls
+    /// back to its v1.1 build status rather than flickering.
+    private func resolveWorkflowStatuses(workflowIds: Set<String>) async -> [String: String] {
+        await withTaskGroup(of: (id: String, status: String)?.self) { group in
+            for workflowId in workflowIds {
+                group.addTask { @MainActor in
+                    guard let status = await self.workflowStatus(workflowId) else { return nil }
+                    return (workflowId, status)
+                }
+            }
+            var result: [String: String] = [:]
+            for await entry in group {
+                if let entry { result[entry.id] = entry.status }
+            }
+            return result
+        }
+    }
+
     /// v2 workflow rollup status, caching terminal results so finished workflows aren't
     /// refetched on later polls. Returns nil on fetch error (caller treats as not-deployed).
     private func workflowStatus(_ workflowId: String) async -> String? {
+        if let thisPoll = workflowStatusThisPoll[workflowId] { return thisPoll }
         if let cached = cachedTerminalWorkflowStatusById[workflowId] { return cached }
         do {
             let status = try await fetchWorkflow(workflowId).status
-            if let status, Self.terminalWorkflowStatuses.contains(status) {
-                // Bounded so a long-running session can't accumulate an entry per
-                // workflow ever seen; on overflow we drop the cache and refetch lazily.
-                if cachedTerminalWorkflowStatusById.count >= Self.maxCachedWorkflowStatuses {
-                    cachedTerminalWorkflowStatusById.removeAll(keepingCapacity: true)
+            if let status {
+                workflowStatusThisPoll[workflowId] = status
+                if Self.terminalWorkflowStatuses.contains(status) {
+                    // Bounded so a long-running session can't accumulate an entry per
+                    // workflow ever seen; on overflow we drop the cache and refetch lazily.
+                    if cachedTerminalWorkflowStatusById.count >= Self.maxCachedWorkflowStatuses {
+                        cachedTerminalWorkflowStatusById.removeAll(keepingCapacity: true)
+                    }
+                    cachedTerminalWorkflowStatusById[workflowId] = status
                 }
-                cachedTerminalWorkflowStatusById[workflowId] = status
             }
             return status
         } catch {

@@ -104,7 +104,9 @@ final class BuildPollerTests: XCTestCase {
 
         let trackedBuilds = try XCTUnwrap(appState.buildsByProject["delta-exchange/api-console"])
         XCTAssertEqual(trackedBuilds.map(\.branch), ["main"])
-        XCTAssertEqual(workflowFetchCount, 1)
+        // Two first-poll workflow fetches - one for actor ownership, one for the row's v2
+        // status - then both are cached, so the second poll adds none.
+        XCTAssertEqual(workflowFetchCount, 2)
         XCTAssertEqual(pipelineFetchCount, 1)
     }
 
@@ -250,6 +252,103 @@ final class BuildPollerTests: XCTestCase {
         XCTAssertEqual(statusFetches["wf-dep"], 1)
     }
 
+    // MARK: - Row status (v2 workflow rollup)
+
+    func testRowWorkflowStatusIsResolvedFromV2ForOnScreenBranches() async {
+        // v1.1 still says the job is running; v2 has already rolled up to success. The row
+        // must trust v2, so the resolved status - not the stale v1.1 one - drives the glyph.
+        let builds = [
+            makeRunningV1Build(branch: "feat/dea-201", workflowId: "wf-live")
+        ]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "devnet-manual-deploy", status: "success", pipelineId: "pipeline-\(workflowId)")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-live"], "success")
+        XCTAssertEqual(RowStatus(circleCIWorkflowStatus: "success"), .success)
+    }
+
+    func testRowWorkflowStatusOmitsWorkflowWhenV2FetchFails() async {
+        enum TestError: Error { case unavailable }
+        let builds = [
+            makeRunningV1Build(branch: "feat/dea-201", workflowId: "wf-live")
+        ]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { _ in throw TestError.unavailable },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        // No v2 status -> row falls back to v1.1 rather than showing a stale/empty state.
+        XCTAssertNil(appState.workflowStatusByWorkflowId["wf-live"])
+    }
+
+    func testDevnetCandidateRowFetchesV2StatusOncePerPoll() async {
+        // A still-running devnet workflow is both a deploy candidate and an on-screen row.
+        // The devnet resolver and the row-status resolver must share the per-poll fetch so
+        // it makes a single v2 round-trip, not two.
+        let builds = [
+            makeBuild(buildNum: 11, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-run", startTime: "2026-03-24T10:00:00Z")
+        ]
+        var statusFetches: [String: Int] = [:]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                statusFetches[workflowId, default: 0] += 1
+                return WorkflowDetails(id: workflowId, name: "build-and-deploy", status: "running", pipelineId: "pipeline-\(workflowId)")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(statusFetches["wf-run"], 1)
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-run"], "running")
+    }
+
+    func testOnScreenWorkflowStatusIsPreservedOnTransientV2Failure() async {
+        enum TestError: Error { case unavailable }
+        let builds = [
+            makeRunningV1Build(branch: "feat/dea-201", workflowId: "wf-live")
+        ]
+        var fetchCount = 0
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                fetchCount += 1
+                if fetchCount == 1 {
+                    return WorkflowDetails(id: workflowId, name: "devnet-manual-deploy", status: "running", pipelineId: "pipeline-\(workflowId)")
+                }
+                throw TestError.unavailable
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-live"], "running")
+
+        // Second poll's v2 fetch fails; the last-known status must survive rather than the
+        // row silently dropping back to v1.1.
+        await poller.checkNow()
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-live"], "running")
+    }
+
     private func runPollResolvingDeploys(builds: [Build], statuses: [String: String]) async -> AppState {
         let poller = BuildPoller(
             fetchBuilds: { _, _, _, _ in builds },
@@ -324,6 +423,37 @@ final class BuildPollerTests: XCTestCase {
                 workflowId: workflowId,
                 workflowName: workflowName
             ),
+            pullRequests: nil
+        )
+    }
+
+    /// A v1.1 build still reporting itself as running - the lagging state that leaves a row
+    /// spinning after the workflow has actually finished per v2.
+    private func makeRunningV1Build(branch: String, workflowId: String) -> Build {
+        Build(
+            vcsUrl: "https://github.com/delta-exchange/api-console",
+            buildUrl: "https://circleci.com/gh/delta-exchange/api-console/1",
+            buildNum: 1,
+            branch: branch,
+            vcsRevision: "rev-1",
+            committerName: "Anuj Sharma",
+            committerEmail: "anuj.sharma@delta.exchange",
+            authorName: "Anuj Sharma",
+            authorEmail: "anuj.sharma@delta.exchange",
+            subject: "Commit 1",
+            body: nil,
+            why: "github",
+            queuedAt: "2026-07-13T10:00:00Z",
+            startTime: "2026-07-13T10:00:00Z",
+            stopTime: nil,
+            buildTimeMillis: nil,
+            username: "delta-exchange",
+            reponame: "api-console",
+            lifecycle: "running",
+            outcome: nil,
+            status: "running",
+            retryOf: nil,
+            workflows: WorkflowInfo(jobName: "job-1", workflowId: workflowId, workflowName: "devnet-manual-deploy"),
             pullRequests: nil
         )
     }

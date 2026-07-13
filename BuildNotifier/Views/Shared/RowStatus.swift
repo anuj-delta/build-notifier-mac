@@ -31,6 +31,22 @@ enum RowStatus {
         }
     }
 
+    /// Maps a CircleCI v2 workflow rollup status (the value the web UI shows) to a row
+    /// bucket. Returns nil for statuses we don't recognize so the caller can fall back to
+    /// the v1.1 build status. `failing` stays in-progress: a job has failed but others are
+    /// still running, matching how CircleCI itself renders it until the workflow terminates.
+    init?(circleCIWorkflowStatus status: String) {
+        switch status {
+        case "success": self = .success
+        case "running", "failing": self = .running
+        case "on_hold": self = .onHold
+        case "not_run": self = .neutral
+        case "failed", "error", "unauthorized": self = .failed
+        case "canceled": self = .canceled
+        default: return nil
+        }
+    }
+
     init(_ status: VercelDeploymentStatus) {
         switch status {
         case .ready:
