@@ -285,15 +285,24 @@ struct BuildRow: View {
                         .foregroundStyle(AppChrome.textMuted)
                         .monospacedDigit()
 
-                    if isDevnetDeployed {
-                        devnetIndicator
-                    }
-
-                    if hasActions {
-                        trailingActions
-                            .frame(height: trailingActionRowHeight)
-                            .opacity(isHovered || isAutoApproveArmed ? 1 : 0)
-                            .allowsHitTesting(isHovered || isAutoApproveArmed)
+                    // One second slot: the devnet badge sits here, and the hover
+                    // actions swap into the same place. Stacking both would grow
+                    // the row past its two text lines and leave the action button
+                    // floating below the row.
+                    if isDevnetDeployed || hasActions {
+                        ZStack(alignment: .trailing) {
+                            if isDevnetDeployed {
+                                devnetIndicator
+                                    .opacity(showActions ? 0 : 1)
+                            }
+                            if hasActions {
+                                trailingActions
+                                    .frame(height: trailingActionRowHeight)
+                                    .opacity(showActions ? 1 : 0)
+                                    .allowsHitTesting(showActions)
+                            }
+                        }
+                        .animation(Motion.hover, value: showActions)
                     }
                 }
                 .frame(width: RowLayout.trailingColumnWidth, alignment: .trailing)
@@ -408,6 +417,11 @@ struct BuildRow: View {
 
     private var hasActions: Bool {
         build.buildStatus.isFailure || build.buildStatus.isRunning || canAutoApprove || isAutoApproveArmed
+    }
+
+    /// Actions are revealed on hover, or kept visible while auto-approve is armed.
+    private var showActions: Bool {
+        isHovered || isAutoApproveArmed
     }
 
 }
