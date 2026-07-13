@@ -117,6 +117,7 @@ enum AppChrome {
         dark: NSColor(calibratedRed: 0.61, green: 0.53, blue: 1.0, alpha: 1)
     )
 
+    /// Soft fill paired with `deploy`, reserved for a deployed-row highlight background.
     static let deploySoft = dynamicColor(
         light: NSColor(calibratedRed: 0.42, green: 0.30, blue: 1.0, alpha: 0.12),
         dark: NSColor(calibratedRed: 0.61, green: 0.53, blue: 1.0, alpha: 0.18)
@@ -128,6 +129,14 @@ enum AppChrome {
     static let radiusCard: CGFloat = 12
     static let radiusWindow: CGFloat = 13
     static let radiusModal: CGFloat = 16
+}
+
+/// Column widths shared by CircleCI and Vercel rows so the leading status glyph
+/// and trailing timestamp line up across both providers - the alignment only
+/// holds if both rows use the same values, so they live in one place.
+enum RowLayout {
+    static let statusColumnWidth: CGFloat = 14
+    static let trailingColumnWidth: CGFloat = 62
 }
 
 /// Named animations so hover, state, and gesture-driven motion stay consistent

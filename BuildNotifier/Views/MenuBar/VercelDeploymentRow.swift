@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct VercelDeploymentRow: View {
-    private let statusColumnWidth: CGFloat = 14
-    private let trailingColumnWidth: CGFloat = 62
     private let labelMaxWidth: CGFloat = 220
 
     let deployment: VercelDeployment
@@ -47,7 +45,7 @@ struct VercelDeploymentRow: View {
             Text(deployment.relativeTime)
                 .font(Typography.rowMeta)
                 .foregroundStyle(AppChrome.textMuted)
-                .frame(width: trailingColumnWidth, alignment: .trailing)
+                .frame(width: RowLayout.trailingColumnWidth, alignment: .trailing)
                 .monospacedDigit()
         }
         .padding(.horizontal, 8)
@@ -79,7 +77,7 @@ struct VercelDeploymentRow: View {
                 StatusGlyph(status: status)
             }
         }
-        .frame(width: statusColumnWidth, alignment: .center)
+        .frame(width: RowLayout.statusColumnWidth, alignment: .center)
         .padding(.top, 1)
     }
 

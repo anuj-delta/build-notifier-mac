@@ -182,19 +182,22 @@ final class AppState {
             }
             
             // Keep the most recently active branches so feature branches surface
-            // alongside main/develop instead of being crowded out.
+            // alongside main/develop instead of being crowded out. Rank and pick
+            // by activityDate rather than trusting the API's response order, so the
+            // right branch/build wins even if buildsByProject is ever reordered.
             let branchesByRecency = buildsByBranch.keys.sorted { b1, b2 in
-                let d1 = buildsByBranch[b1]?.first?.activityDate ?? .distantPast
-                let d2 = buildsByBranch[b2]?.first?.activityDate ?? .distantPast
+                let d1 = buildsByBranch[b1]?.compactMap { $0.activityDate }.max() ?? .distantPast
+                let d2 = buildsByBranch[b2]?.compactMap { $0.activityDate }.max() ?? .distantPast
                 if d1 != d2 { return d1 > d2 }
                 return b1 < b2
             }
 
             var sortedBuildsByBranch: [String: [Build]] = [:]
             for branch in branchesByRecency.prefix(Self.maxBranchesPerProject) {
-                if let branchBuilds = buildsByBranch[branch] {
-                    // Keep only the most recent build per branch
-                    sortedBuildsByBranch[branch] = Array(branchBuilds.prefix(1))
+                if let latestBuild = buildsByBranch[branch]?.max(by: {
+                    ($0.activityDate ?? .distantPast) < ($1.activityDate ?? .distantPast)
+                }) {
+                    sortedBuildsByBranch[branch] = [latestBuild]
                 }
             }
             

@@ -200,16 +200,14 @@ struct ProjectSection: View {
 
     private var sortedBranches: [String] {
         buildsByBranch.keys.sorted { b1, b2 in
-            let date1 = buildsByBranch[b1]?.first?.activityDate ?? .distantPast
-            let date2 = buildsByBranch[b2]?.first?.activityDate ?? .distantPast
+            let date1 = buildsByBranch[b1]?.compactMap { $0.activityDate }.max() ?? .distantPast
+            let date2 = buildsByBranch[b2]?.compactMap { $0.activityDate }.max() ?? .distantPast
             return date1 > date2
         }
     }
 }
 
 struct BuildRow: View {
-    private let statusColumnWidth: CGFloat = 14
-    private let trailingColumnWidth: CGFloat = 62
     private let trailingActionRowHeight: CGFloat = 14
 
     let build: Build
@@ -298,7 +296,7 @@ struct BuildRow: View {
                             .allowsHitTesting(isHovered || isAutoApproveArmed)
                     }
                 }
-                .frame(width: trailingColumnWidth, alignment: .trailing)
+                .frame(width: RowLayout.trailingColumnWidth, alignment: .trailing)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 9)
@@ -327,7 +325,7 @@ struct BuildRow: View {
                 StatusGlyph(status: status)
             }
         }
-        .frame(width: statusColumnWidth, alignment: .center)
+        .frame(width: RowLayout.statusColumnWidth, alignment: .center)
         .padding(.top, 1)
     }
 
