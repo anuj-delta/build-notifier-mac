@@ -295,6 +295,60 @@ final class BuildPollerTests: XCTestCase {
         XCTAssertNil(appState.workflowStatusByWorkflowId["wf-live"])
     }
 
+    func testDevnetCandidateRowFetchesV2StatusOncePerPoll() async {
+        // A still-running devnet workflow is both a deploy candidate and an on-screen row.
+        // The devnet resolver and the row-status resolver must share the per-poll fetch so
+        // it makes a single v2 round-trip, not two.
+        let builds = [
+            makeBuild(buildNum: 11, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-run", startTime: "2026-03-24T10:00:00Z")
+        ]
+        var statusFetches: [String: Int] = [:]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                statusFetches[workflowId, default: 0] += 1
+                return WorkflowDetails(id: workflowId, name: "build-and-deploy", status: "running", pipelineId: "pipeline-\(workflowId)")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(statusFetches["wf-run"], 1)
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-run"], "running")
+    }
+
+    func testOnScreenWorkflowStatusIsPreservedOnTransientV2Failure() async {
+        enum TestError: Error { case unavailable }
+        let builds = [
+            makeRunningV1Build(branch: "feat/dea-201", workflowId: "wf-live")
+        ]
+        var fetchCount = 0
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                fetchCount += 1
+                if fetchCount == 1 {
+                    return WorkflowDetails(id: workflowId, name: "devnet-manual-deploy", status: "running", pipelineId: "pipeline-\(workflowId)")
+                }
+                throw TestError.unavailable
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-live"], "running")
+
+        // Second poll's v2 fetch fails; the last-known status must survive rather than the
+        // row silently dropping back to v1.1.
+        await poller.checkNow()
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-live"], "running")
+    }
+
     private func runPollResolvingDeploys(builds: [Build], statuses: [String: String]) async -> AppState {
         let poller = BuildPoller(
             fetchBuilds: { _, _, _, _ in builds },
