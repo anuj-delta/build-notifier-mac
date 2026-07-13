@@ -11,11 +11,38 @@ final class VercelPoller: ObservableObject {
     
     private var scheduleTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
-    private var hasEstablishedBaseline = false
+    private var baselinedProjectIds: Set<String> = []
+    private let fetchDeployments: (String, String?, Int) async throws -> [VercelDeployment]
+    private let sendDeploymentReadyNotification: (VercelDeployment, Bool) -> Void
+    private let sendDeploymentErrorNotification: (VercelDeployment, Bool) -> Void
     
     weak var appState: AppState?
     
-    init() {}
+    init(
+        fetchDeployments: ((String, String?, Int) async throws -> [VercelDeployment])? = nil,
+        sendDeploymentReadyNotification: ((VercelDeployment, Bool) -> Void)? = nil,
+        sendDeploymentErrorNotification: ((VercelDeployment, Bool) -> Void)? = nil
+    ) {
+        self.fetchDeployments = fetchDeployments ?? { projectId, teamId, limit in
+            try await VercelAPI.shared.getDeployments(
+                projectId: projectId,
+                teamId: teamId,
+                limit: limit
+            )
+        }
+        self.sendDeploymentReadyNotification = sendDeploymentReadyNotification ?? { deployment, soundEnabled in
+            NotificationManager.shared.sendDeploymentReadyNotification(
+                deployment: deployment,
+                soundEnabled: soundEnabled
+            )
+        }
+        self.sendDeploymentErrorNotification = sendDeploymentErrorNotification ?? { deployment, soundEnabled in
+            NotificationManager.shared.sendDeploymentErrorNotification(
+                deployment: deployment,
+                soundEnabled: soundEnabled
+            )
+        }
+    }
     
     // MARK: - Start/Stop Polling
     
@@ -23,7 +50,6 @@ final class VercelPoller: ObservableObject {
         stopPolling()
 
         isPolling = true
-        hasEstablishedBaseline = false
 
         poll()
         
@@ -44,7 +70,7 @@ final class VercelPoller: ObservableObject {
         pollTask?.cancel()
         pollTask = nil
         isPolling = false
-        hasEstablishedBaseline = false
+        baselinedProjectIds.removeAll()
     }
     
     func poll() {
@@ -52,6 +78,10 @@ final class VercelPoller: ObservableObject {
         pollTask = Task {
             await performPoll()
         }
+    }
+
+    func checkNow() async {
+        await performPoll()
     }
     
     // MARK: - Poll Implementation
@@ -69,6 +99,7 @@ final class VercelPoller: ObservableObject {
         
         let previousDeployments = appState.deploymentsByProject
         let currentVercelUser = appState.vercelUser
+        let fetchDeployments = self.fetchDeployments
         
         var newDeploymentsByProject: [String: [VercelDeployment]] = [:]
         
@@ -76,11 +107,7 @@ final class VercelPoller: ObservableObject {
             for project in watchedProjects {
                 group.addTask {
                     do {
-                        let deployments = try await VercelAPI.shared.getDeployments(
-                            projectId: project.id,
-                            teamId: project.teamId,
-                            limit: 20
-                        )
+                        let deployments = try await fetchDeployments(project.id, project.teamId, 20)
                         let filteredDeployments: [VercelDeployment]
                         if project.followMode == .mine {
                             filteredDeployments = deployments.filter { deployment in
@@ -106,17 +133,26 @@ final class VercelPoller: ObservableObject {
         appState.deploymentsByProject = newDeploymentsByProject
         lastPollTime = Date()
 
-        if !hasEstablishedBaseline {
-            establishNotificationBaseline(current: newDeploymentsByProject)
-            hasEstablishedBaseline = true
-            return
+        let watchedProjectIds = Set(watchedProjects.map(\.id))
+        baselinedProjectIds.formIntersection(watchedProjectIds)
+
+        var liveDeploymentsByProject: [String: [VercelDeployment]] = [:]
+        for (projectId, deployments) in newDeploymentsByProject {
+            if baselinedProjectIds.contains(projectId) {
+                liveDeploymentsByProject[projectId] = deployments
+            } else {
+                establishNotificationBaseline(deployments: deployments)
+                baselinedProjectIds.insert(projectId)
+            }
         }
 
-        await checkForStatusChanges(
-            previous: previousDeployments,
-            current: newDeploymentsByProject,
-            preferences: appState.preferences
-        )
+        if !liveDeploymentsByProject.isEmpty {
+            await checkForStatusChanges(
+                previous: previousDeployments,
+                current: liveDeploymentsByProject,
+                preferences: appState.preferences
+            )
+        }
     }
     
     // MARK: - Status Change Detection
@@ -133,7 +169,6 @@ final class VercelPoller: ObservableObject {
         let celebrationsWanted = preferences.celebrateProdSuccess || preferences.playFailureSound
         guard vercelNotificationsEnabled || celebrationsWanted else { return }
 
-        let notificationManager = NotificationManager.shared
         let soundEnabled = preferences.notificationSoundEnabled
 
         var newNotifiedDeployments = appState.notifiedVercelDeployments
@@ -154,10 +189,10 @@ final class VercelPoller: ObservableObject {
                 if vercelNotificationsEnabled, isNewOrChanged,
                    !newNotifiedDeployments.contains(notificationKey) {
                     if currentStatus.isSuccess && preferences.notifyOnDeploymentReady {
-                        notificationManager.sendDeploymentReadyNotification(deployment: deployment, soundEnabled: soundEnabled)
+                        sendDeploymentReadyNotification(deployment, soundEnabled)
                         newNotifiedDeployments.insert(notificationKey)
                     } else if currentStatus.isFailure && preferences.notifyOnDeploymentError {
-                        notificationManager.sendDeploymentErrorNotification(deployment: deployment, soundEnabled: soundEnabled)
+                        sendDeploymentErrorNotification(deployment, soundEnabled)
                         newNotifiedDeployments.insert(notificationKey)
                     }
                 }
@@ -182,25 +217,23 @@ final class VercelPoller: ObservableObject {
         appState.playedFailureVercelDeployments = newPlayedFailureDeployments
     }
 
-    private func establishNotificationBaseline(current: [String: [VercelDeployment]]) {
+    private func establishNotificationBaseline(deployments: [VercelDeployment]) {
         guard let appState = appState else { return }
 
         var baselineKeys = Set<String>()
         var celebratedBaseline = Set<String>()
         var failureBaseline = Set<String>()
-        for (_, deployments) in current {
-            for deployment in deployments {
-                let status = deployment.deploymentStatus
-                guard status.isSuccess || status.isFailure else { continue }
-                baselineKeys.insert("\(deployment.uid)-\(status.rawValue)")
-                if status.isSuccess { celebratedBaseline.insert(deployment.uid) }
-                if status.isFailure { failureBaseline.insert(deployment.uid) }
-            }
+        for deployment in deployments {
+            let status = deployment.deploymentStatus
+            guard status.isSuccess || status.isFailure else { continue }
+            baselineKeys.insert("\(deployment.uid)-\(status.rawValue)")
+            if status.isSuccess { celebratedBaseline.insert(deployment.uid) }
+            if status.isFailure { failureBaseline.insert(deployment.uid) }
         }
 
-        appState.notifiedVercelDeployments = baselineKeys
-        appState.celebratedVercelDeployments = celebratedBaseline
-        appState.playedFailureVercelDeployments = failureBaseline
+        appState.notifiedVercelDeployments.formUnion(baselineKeys)
+        appState.celebratedVercelDeployments.formUnion(celebratedBaseline)
+        appState.playedFailureVercelDeployments.formUnion(failureBaseline)
     }
 }
 

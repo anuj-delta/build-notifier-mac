@@ -31,7 +31,8 @@ final class BuildPoller: ObservableObject {
     
     private var scheduleTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
-    private var hasEstablishedBaseline = false
+    private var baselinedProjectSlugs: Set<String> = []
+    private var unresolvedBaselineWorkflowIds: Set<String> = []
     private let fetchBuilds: (String, String, String, Int) async throws -> [Build]
     private let fetchWorkflowJobs: (String) async throws -> [WorkflowJob]
     private let fetchWorkflow: (String) async throws -> WorkflowDetails
@@ -110,7 +111,6 @@ final class BuildPoller: ObservableObject {
         stopPolling()
 
         isPolling = true
-        hasEstablishedBaseline = false
         
         // Poll immediately
         poll()
@@ -133,7 +133,8 @@ final class BuildPoller: ObservableObject {
         pollTask?.cancel()
         pollTask = nil
         isPolling = false
-        hasEstablishedBaseline = false
+        baselinedProjectSlugs.removeAll()
+        unresolvedBaselineWorkflowIds.removeAll()
     }
     
     func poll() {
@@ -182,6 +183,7 @@ final class BuildPoller: ObservableObject {
         var workflowApprovalSupport: [String: Bool] = [:]
         var mergedWorkflowPipelineIds = cachedPipelineIdByWorkflowId
         var mergedPipelineActors = cachedActorByPipelineId
+        var successfulResults: [ProjectPollResult] = []
 
         await withTaskGroup(of: ProjectPollResult?.self) { group in
             for project in watchedProjects {
@@ -281,6 +283,7 @@ final class BuildPoller: ObservableObject {
             
             for await result in group {
                 if let result {
+                    successfulResults.append(result)
                     newBuildsByProject[result.slug] = result.builds
                     newPendingApprovals.append(contentsOf: result.approvals)
                     workflowApprovalSupport.merge(result.approvalSupport) { _, new in new }
@@ -324,26 +327,38 @@ final class BuildPoller: ObservableObject {
         mergedStatuses.merge(resolvedStatuses) { _, new in new }
         appState.workflowStatusByWorkflowId = mergedStatuses
 
-        if !hasEstablishedBaseline {
+        let watchedProjectSlugs = Set(watchedProjects.map(\.slug))
+        baselinedProjectSlugs.formIntersection(watchedProjectSlugs)
+
+        var liveBuildsByProject: [String: [Build]] = [:]
+        var livePendingApprovals: [PendingApproval] = []
+        for result in successfulResults {
+            if baselinedProjectSlugs.contains(result.slug) {
+                liveBuildsByProject[result.slug] = result.builds
+                livePendingApprovals.append(contentsOf: result.approvals)
+                continue
+            }
+
             await establishNotificationBaseline(
-                current: newBuildsByProject,
-                currentApprovals: newPendingApprovals
+                currentBuilds: result.builds,
+                currentApprovals: result.approvals
             )
-            hasEstablishedBaseline = true
-            return
+            baselinedProjectSlugs.insert(result.slug)
         }
 
-        // Check for status changes and send notifications
-        await checkForStatusChanges(
-            previous: previousBuilds,
-            current: newBuildsByProject,
-            previousApprovals: appState.notifiedApprovals,
-            currentApprovals: newPendingApprovals,
-            preferences: appState.preferences
-        )
+        if !liveBuildsByProject.isEmpty || !livePendingApprovals.isEmpty {
+            await checkForStatusChanges(
+                previous: previousBuilds,
+                current: liveBuildsByProject,
+                previousApprovals: appState.notifiedApprovals,
+                currentApprovals: livePendingApprovals,
+                preferences: appState.preferences
+            )
+        }
         
-        // Update notified approvals
-        appState.notifiedApprovals = Set(newPendingApprovals.map { $0.id })
+        // Approval request IDs are immutable, so retain them for the session.
+        // A transient project fetch must not make an old approval notify again.
+        appState.notifiedApprovals.formUnion(newPendingApprovals.map(\.id))
     }
 
     /// For each project, the branch live on devnet: the newest devnet-deploy workflow whose
@@ -423,7 +438,7 @@ final class BuildPoller: ObservableObject {
     }
 
     private func establishNotificationBaseline(
-        current: [String: [Build]],
+        currentBuilds: [Build],
         currentApprovals: [PendingApproval]
     ) async {
         guard let appState = appState else { return }
@@ -434,11 +449,9 @@ final class BuildPoller: ObservableObject {
         var successWorkflows = Set<String>()
         var buildsByWorkflow: [String: [Build]] = [:]
 
-        for (_, currentBuilds) in current {
-            for build in currentBuilds {
-                guard let workflowId = build.workflows?.workflowId else { continue }
-                buildsByWorkflow[workflowId, default: []].append(build)
-            }
+        for build in currentBuilds {
+            guard let workflowId = build.workflows?.workflowId else { continue }
+            buildsByWorkflow[workflowId, default: []].append(build)
         }
 
         for (workflowId, builds) in buildsByWorkflow {
@@ -448,11 +461,16 @@ final class BuildPoller: ObservableObject {
 
             if builds.contains(where: { $0.buildStatus.isFailure }) {
                 failedWorkflows.insert(workflowId)
+                unresolvedBaselineWorkflowIds.remove(workflowId)
                 continue
             }
 
             do {
                 let allJobs = try await fetchWorkflowJobs(workflowId)
+                guard !allJobs.isEmpty else {
+                    unresolvedBaselineWorkflowIds.insert(workflowId)
+                    continue
+                }
                 let hasIncompleteJobs = allJobs.contains { job in
                     let status = job.status
                     return status == "running" || status == "queued" ||
@@ -463,17 +481,20 @@ final class BuildPoller: ObservableObject {
                 if !hasIncompleteJobs && allJobs.allSatisfy({ $0.status == "success" }) {
                     successWorkflows.insert(workflowId)
                 }
+                unresolvedBaselineWorkflowIds.remove(workflowId)
             } catch {
-                // Ignore transient baseline fetch errors; future polls can recover.
+                // The first successfully resolved state is still part of the
+                // startup snapshot and must be absorbed without notifying.
+                unresolvedBaselineWorkflowIds.insert(workflowId)
             }
         }
 
-        appState.notifiedApprovals = Set(currentApprovals.map(\.id))
-        appState.notifiedStartedWorkflows = startedWorkflows
-        appState.notifiedFailedWorkflows = failedWorkflows
-        appState.notifiedSuccessWorkflows = successWorkflows
-        appState.celebratedSuccessWorkflows = successWorkflows
-        appState.playedFailureSoundWorkflows = failedWorkflows
+        appState.notifiedApprovals.formUnion(currentApprovals.map(\.id))
+        appState.notifiedStartedWorkflows.formUnion(startedWorkflows)
+        appState.notifiedFailedWorkflows.formUnion(failedWorkflows)
+        appState.notifiedSuccessWorkflows.formUnion(successWorkflows)
+        appState.celebratedSuccessWorkflows.formUnion(successWorkflows)
+        appState.playedFailureSoundWorkflows.formUnion(failedWorkflows)
     }
     
     // MARK: - Status Change Detection
@@ -514,6 +535,7 @@ final class BuildPoller: ObservableObject {
         var newStartedWorkflows = appState.notifiedStartedWorkflows
         var newCelebratedSuccess = appState.celebratedSuccessWorkflows
         var newPlayedFailureSound = appState.playedFailureSoundWorkflows
+        var newUnresolvedBaselineWorkflows = unresolvedBaselineWorkflowIds
 
         for (workflowId, builds) in buildsByWorkflow {
             // Confetti and failure sound only fire for branches the user cares
@@ -555,10 +577,12 @@ final class BuildPoller: ObservableObject {
                     appState.playFailureSound()
                     newPlayedFailureSound.insert(workflowId)
                 }
+                newUnresolvedBaselineWorkflows.remove(workflowId)
             }
 
             // SUCCESS: notification and/or production-deploy confetti.
             // Uses v2 API to check ALL jobs (v1.1 may omit not-yet-started jobs).
+            let suppressRecoveredBaseline = newUnresolvedBaselineWorkflows.contains(workflowId)
             let wantsSuccessNotification = notificationsEnabled && preferences.notifyOnSuccess
                 && !appState.notifiedSuccessWorkflows.contains(workflowId)
             let celebrationKind: CelebrationKind? =
@@ -567,9 +591,11 @@ final class BuildPoller: ObservableObject {
                 : nil
             let wantsConfetti = celebrationKind != nil
                 && !appState.celebratedSuccessWorkflows.contains(workflowId)
-            if wantsSuccessNotification || wantsConfetti {
+            if wantsSuccessNotification || wantsConfetti || suppressRecoveredBaseline {
                 do {
                     let allJobs = try await fetchWorkflowJobs(workflowId)
+
+                    guard !allJobs.isEmpty else { continue }
 
                     let hasIncompleteJobs = allJobs.contains { job in
                         let status = job.status
@@ -581,11 +607,14 @@ final class BuildPoller: ObservableObject {
                     if !hasIncompleteJobs,
                        allJobs.allSatisfy({ $0.status == "success" }),
                        let representativeBuild = builds.first {
-                        if wantsSuccessNotification {
+                        if suppressRecoveredBaseline {
+                            newSuccessWorkflows.insert(workflowId)
+                            newCelebratedSuccess.insert(workflowId)
+                        } else if wantsSuccessNotification {
                             sendBuildSuccessNotification(representativeBuild, soundEnabled)
                             newSuccessWorkflows.insert(workflowId)
                         }
-                        if wantsConfetti, let celebrationKind {
+                        if wantsConfetti, !suppressRecoveredBaseline, let celebrationKind {
                             appState.celebrate(projectLabel: representativeBuild.projectSlug, kind: celebrationKind)
                             newCelebratedSuccess.insert(workflowId)
                             // One modal deploy = one celebration: consume the
@@ -597,6 +626,9 @@ final class BuildPoller: ObservableObject {
                                 )
                             }
                         }
+                    }
+                    if suppressRecoveredBaseline {
+                        newUnresolvedBaselineWorkflows.remove(workflowId)
                     }
                 } catch {
                     // Ignore API errors, will retry on next poll
@@ -610,6 +642,7 @@ final class BuildPoller: ObservableObject {
         appState.notifiedStartedWorkflows = newStartedWorkflows
         appState.celebratedSuccessWorkflows = newCelebratedSuccess
         appState.playedFailureSoundWorkflows = newPlayedFailureSound
+        unresolvedBaselineWorkflowIds = newUnresolvedBaselineWorkflows
 
         // Check for new pending approvals
         if notificationsEnabled && preferences.notifyOnPendingApproval {
