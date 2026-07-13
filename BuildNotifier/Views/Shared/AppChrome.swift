@@ -102,6 +102,18 @@ enum AppChrome {
         dark: NSColor(calibratedRed: 0.25, green: 0.72, blue: 0.31, alpha: 0.17)
     )
 
+    /// Reserved for the devnet-deploy signal. Violet so it never reads as the blue PR
+    /// pill or the green build status.
+    static let deploy = dynamicColor(
+        light: NSColor(calibratedRed: 0.42, green: 0.30, blue: 1.0, alpha: 1),
+        dark: NSColor(calibratedRed: 0.61, green: 0.53, blue: 1.0, alpha: 1)
+    )
+
+    static let deploySoft = dynamicColor(
+        light: NSColor(calibratedRed: 0.42, green: 0.30, blue: 1.0, alpha: 0.12),
+        dark: NSColor(calibratedRed: 0.61, green: 0.53, blue: 1.0, alpha: 0.18)
+    )
+
     static let radiusSmall: CGFloat = 6
     static let radiusMedium: CGFloat = 8
     static let radiusLarge: CGFloat = 10

@@ -39,6 +39,7 @@ private struct PointingHandCursor: ViewModifier {
 struct ProjectSection: View {
     let project: WatchedProject
     let buildsByBranch: [String: [Build]]
+    let deployedBranch: String?
     let isFiltered: Bool
     let approvalCapableWorkflowIds: Set<String>
     let armedAutoApprovalWorkflowIds: Set<String>
@@ -177,6 +178,7 @@ struct ProjectSection: View {
                                 build: build,
                                 canAutoApprove: workflowId.map { approvalCapableWorkflowIds.contains($0) } ?? false,
                                 isAutoApproveArmed: workflowId.map { armedAutoApprovalWorkflowIds.contains($0) } ?? false,
+                                isDevnetDeployed: deployedBranch.map { !$0.isEmpty && build.branch == $0 } ?? false,
                                 onRetry: { onRetry(build) },
                                 onCancel: { onCancel(build) },
                                 onAutoApprove: { onArmAutoApprove(build) },
@@ -217,6 +219,7 @@ struct BuildRow: View {
     let build: Build
     let canAutoApprove: Bool
     let isAutoApproveArmed: Bool
+    let isDevnetDeployed: Bool
     let onRetry: () -> Void
     let onCancel: () -> Void
     let onAutoApprove: () -> Void
@@ -293,6 +296,10 @@ struct BuildRow: View {
                             .foregroundStyle(AppChrome.textMuted)
                             .monospacedDigit()
 
+                        if isDevnetDeployed {
+                            devnetIndicator
+                        }
+
                         if hasActions {
                             trailingActions
                                 .frame(height: trailingActionRowHeight)
@@ -318,6 +325,18 @@ struct BuildRow: View {
 
     private var status: RowStatus {
         RowStatus(build.buildStatus)
+    }
+
+    private var devnetIndicator: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "hexagon.fill")
+                .font(.system(size: 8, weight: .semibold))
+            Text("devnet")
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .foregroundStyle(AppChrome.deploy)
+        .fixedSize(horizontal: true, vertical: false)
+        .help("Currently deployed to devnet")
     }
 
     private var trailingActions: some View {

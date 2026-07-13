@@ -172,7 +172,7 @@ final class BuildPoller: ObservableObject {
                             project.vcsType,
                             project.orgName,
                             project.repoName,
-                            30
+                            100
                         )
                         
                         // Filter to user's builds if needed

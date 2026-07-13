@@ -166,6 +166,8 @@ final class AppState {
         return false
     }
     
+    static let maxBranchesPerProject = 5
+
     var groupedBuilds: [(project: WatchedProject, builds: [String: [Build]])] {
         var result: [(project: WatchedProject, builds: [String: [Build]])] = []
         
@@ -179,19 +181,17 @@ final class AppState {
                 buildsByBranch[branch, default: []].append(build)
             }
             
-            // Sort branches: main/master first, then alphabetically
-            let sortedBranches = buildsByBranch.keys.sorted { b1, b2 in
-                let mainBranches = ["main", "master", "develop"]
-                let b1Priority = mainBranches.firstIndex(of: b1) ?? Int.max
-                let b2Priority = mainBranches.firstIndex(of: b2) ?? Int.max
-                if b1Priority != b2Priority {
-                    return b1Priority < b2Priority
-                }
+            // Keep the most recently active branches so feature branches surface
+            // alongside main/develop instead of being crowded out.
+            let branchesByRecency = buildsByBranch.keys.sorted { b1, b2 in
+                let d1 = buildsByBranch[b1]?.first?.activityDate ?? .distantPast
+                let d2 = buildsByBranch[b2]?.first?.activityDate ?? .distantPast
+                if d1 != d2 { return d1 > d2 }
                 return b1 < b2
             }
-            
+
             var sortedBuildsByBranch: [String: [Build]] = [:]
-            for branch in sortedBranches {
+            for branch in branchesByRecency.prefix(Self.maxBranchesPerProject) {
                 if let branchBuilds = buildsByBranch[branch] {
                     // Keep only the most recent build per branch
                     sortedBuildsByBranch[branch] = Array(branchBuilds.prefix(1))
@@ -219,9 +219,39 @@ final class AppState {
             }
         }
     }
-    
+
+    /// Workflow names that deploy to devnet. `devnet-manual-deploy` deploys any branch on
+    /// demand; `build-and-deploy` continuously deploys non-production branches (e.g. develop).
+    private static let devnetDeployWorkflows: Set<String> = ["devnet-manual-deploy", "build-and-deploy"]
+
+    /// Whether a build represents a deploy to devnet. `build-and-deploy` also runs on
+    /// production branches for prod, so those are excluded via `productionBranches`.
+    static func isDevnetDeploy(_ build: Build, productionBranches: [String]) -> Bool {
+        guard let workflow = build.workflows?.workflowName?.lowercased(),
+              devnetDeployWorkflows.contains(workflow) else {
+            return false
+        }
+        if workflow == "build-and-deploy",
+           ProductionBranchMatcher.isProduction(branch: build.branch, patterns: productionBranches) {
+            return false
+        }
+        return true
+    }
+
+    /// The branch currently live on devnet for a project: the branch of the most recent
+    /// successful devnet deploy. A running deploy hasn't replaced the live version yet, so
+    /// only successful builds count.
+    func devnetDeployedBranch(forSlug slug: String) -> String? {
+        let builds = buildsByProject[slug] ?? []
+        let productionBranches = preferences.productionBranches
+        return builds
+            .filter { $0.buildStatus.isSuccess && Self.isDevnetDeploy($0, productionBranches: productionBranches) }
+            .max { ($0.activityDate ?? .distantPast) < ($1.activityDate ?? .distantPast) }?
+            .branch
+    }
+
     // MARK: - Actions
-    
+
     func initialize() async {
         workflowApprovalSupport.removeAll()
         armedAutoApprovals.removeAll()

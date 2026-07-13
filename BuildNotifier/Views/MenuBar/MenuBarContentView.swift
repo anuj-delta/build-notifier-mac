@@ -595,6 +595,7 @@ struct MenuBarContentView: View {
                 ProjectSection(
                     project: item.project,
                     buildsByBranch: item.builds,
+                    deployedBranch: appState.devnetDeployedBranch(forSlug: item.project.slug),
                     isFiltered: snapshot.hasSearchQuery,
                     approvalCapableWorkflowIds: appState.approvalCapableWorkflowIds,
                     armedAutoApprovalWorkflowIds: appState.armedAutoApprovalWorkflowIds,
@@ -685,6 +686,7 @@ struct MenuBarContentView: View {
                 ProjectSection(
                     project: item.project,
                     buildsByBranch: item.builds,
+                    deployedBranch: appState.devnetDeployedBranch(forSlug: item.project.slug),
                     isFiltered: snapshot.hasSearchQuery,
                     approvalCapableWorkflowIds: appState.approvalCapableWorkflowIds,
                     armedAutoApprovalWorkflowIds: appState.armedAutoApprovalWorkflowIds,
