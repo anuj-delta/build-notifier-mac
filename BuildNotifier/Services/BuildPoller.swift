@@ -300,6 +300,16 @@ final class BuildPoller: ObservableObject {
         )
         appState.devnetDeployedBranchBySlug.merge(resolvedDeploys) { _, new in new }
 
+        // Resolve the authoritative v2 status for each on-screen row's workflow. v1.1 build
+        // status lags v2, so a finished workflow can still report a running job for a short
+        // window; the row trusts v2 when available and falls back to v1.1 otherwise.
+        let representativeWorkflowIds = Set(
+            appState.groupedBuilds
+                .flatMap { $0.builds.values }
+                .compactMap { $0.first?.workflows?.workflowId }
+        )
+        appState.workflowStatusByWorkflowId = await resolveWorkflowStatuses(workflowIds: representativeWorkflowIds)
+
         if !hasEstablishedBaseline {
             await establishNotificationBaseline(
                 current: newBuildsByProject,
@@ -350,6 +360,25 @@ final class BuildPoller: ObservableObject {
             var result: [String: String] = [:]
             for await found in group {
                 if let found { result[found.slug] = found.branch }
+            }
+            return result
+        }
+    }
+
+    /// v2 rollup status per workflow id, resolved in parallel and reusing the terminal-status
+    /// cache. Workflows whose status can't be fetched this poll are omitted, so the row falls
+    /// back to its v1.1 build status rather than flickering.
+    private func resolveWorkflowStatuses(workflowIds: Set<String>) async -> [String: String] {
+        await withTaskGroup(of: (id: String, status: String)?.self) { group in
+            for workflowId in workflowIds {
+                group.addTask { @MainActor in
+                    guard let status = await self.workflowStatus(workflowId) else { return nil }
+                    return (workflowId, status)
+                }
+            }
+            var result: [String: String] = [:]
+            for await entry in group {
+                if let entry { result[entry.id] = entry.status }
             }
             return result
         }

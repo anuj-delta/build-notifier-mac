@@ -246,6 +246,12 @@ final class AppState {
     /// shows). Keyed by project slug. Populated by `BuildPoller`.
     var devnetDeployedBranchBySlug: [String: String] = [:]
 
+    /// v2 workflow rollup status keyed by workflow id, for the workflows backing the rows
+    /// currently on screen. Populated by `BuildPoller`. Rows trust this over the v1.1 build
+    /// status because v1.1 lags v2 (and CircleCI's own UI): a finished workflow can keep
+    /// reporting a running job for a short window, which otherwise leaves the row spinning.
+    var workflowStatusByWorkflowId: [String: String] = [:]
+
     /// The branch currently live on devnet for a project: the branch of the most recent
     /// devnet deploy whose whole workflow succeeded. v1.1 alone can't tell a still-pending
     /// deploy from a finished one (it omits `not_run` jobs), so the completed-success check
