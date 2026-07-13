@@ -51,6 +51,9 @@ final class BuildPoller: ObservableObject {
     /// Cap on how many recent devnet-deploy workflows to probe per project when resolving
     /// the live branch. The live deploy is effectively always among the newest few.
     private static let maxDevnetWorkflowChecks = 8
+
+    /// Upper bound on the terminal-status cache so memory stays flat across a long session.
+    private static let maxCachedWorkflowStatuses = 500
     
     weak var appState: AppState?
     
@@ -287,10 +290,15 @@ final class BuildPoller: ObservableObject {
         self.cachedActorByPipelineId = mergedPipelineActors
         lastPollTime = Date()
 
-        appState.devnetDeployedBranchBySlug = await resolveDevnetDeployedBranches(
+        // Merge rather than replace: a devnet deploy stays live until a newer one
+        // succeeds, so a project that yields no fresh success this poll (or whose v2
+        // status fetch transiently failed) keeps its last known branch instead of
+        // having the badge flicker off.
+        let resolvedDeploys = await resolveDevnetDeployedBranches(
             buildsByProject: newBuildsByProject,
             productionBranches: appState.preferences.productionBranches
         )
+        appState.devnetDeployedBranchBySlug.merge(resolvedDeploys) { _, new in new }
 
         if !hasEstablishedBaseline {
             await establishNotificationBaseline(
@@ -321,23 +329,30 @@ final class BuildPoller: ObservableObject {
         buildsByProject: [String: [Build]],
         productionBranches: [String]
     ) async -> [String: String] {
-        var result: [String: String] = [:]
-        for (slug, builds) in buildsByProject {
-            let candidates = AppState.devnetDeployWorkflowsNewestFirst(
-                builds: builds,
-                productionBranches: productionBranches
-            )
-            for candidate in candidates.prefix(Self.maxDevnetWorkflowChecks) {
-                if await workflowStatus(candidate.workflowId) == "success" {
-                    result[slug] = candidate.branch
-                    break
+        await withTaskGroup(of: (slug: String, branch: String)?.self) { group in
+            for (slug, builds) in buildsByProject {
+                let candidates = AppState.devnetDeployWorkflowsNewestFirst(
+                    builds: builds,
+                    productionBranches: productionBranches
+                )
+                group.addTask { @MainActor in
+                    for candidate in candidates.prefix(Self.maxDevnetWorkflowChecks) {
+                        if await self.workflowStatus(candidate.workflowId) == "success" {
+                            return (slug, candidate.branch)
+                        }
+                    }
+                    if candidates.count > Self.maxDevnetWorkflowChecks {
+                        print("[BuildPoller] \(slug): no successful devnet deploy in newest \(Self.maxDevnetWorkflowChecks) workflows; older ones not probed")
+                    }
+                    return nil
                 }
             }
-            if result[slug] == nil && candidates.count > Self.maxDevnetWorkflowChecks {
-                print("[BuildPoller] \(slug): no successful devnet deploy in newest \(Self.maxDevnetWorkflowChecks) workflows; older ones not probed")
+            var result: [String: String] = [:]
+            for await found in group {
+                if let found { result[found.slug] = found.branch }
             }
+            return result
         }
-        return result
     }
 
     /// v2 workflow rollup status, caching terminal results so finished workflows aren't
@@ -347,6 +362,11 @@ final class BuildPoller: ObservableObject {
         do {
             let status = try await fetchWorkflow(workflowId).status
             if let status, Self.terminalWorkflowStatuses.contains(status) {
+                // Bounded so a long-running session can't accumulate an entry per
+                // workflow ever seen; on overflow we drop the cache and refetch lazily.
+                if cachedTerminalWorkflowStatusById.count >= Self.maxCachedWorkflowStatuses {
+                    cachedTerminalWorkflowStatusById.removeAll(keepingCapacity: true)
+                }
                 cachedTerminalWorkflowStatusById[workflowId] = status
             }
             return status
