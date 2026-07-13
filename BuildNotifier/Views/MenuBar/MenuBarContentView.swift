@@ -188,10 +188,10 @@ struct MenuBarContentView: View {
 
                 footer
             }
-            .background(GlassBackground(cornerRadius: 13))
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .background(GlassBackground(cornerRadius: AppChrome.radiusWindow))
+            .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusWindow, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                RoundedRectangle(cornerRadius: AppChrome.radiusWindow, style: .continuous)
                     .strokeBorder(AppChrome.glassStroke, lineWidth: 1)
             }
             .background(MenuWindowConfigurator())
@@ -234,8 +234,8 @@ struct MenuBarContentView: View {
                 .opacity(0)
                 .accessibilityHidden(true)
         }
-        .animation(.easeInOut(duration: 0.16), value: pendingAction != nil)
-        .animation(.easeInOut(duration: 0.16), value: deployTarget != nil)
+        .animation(Motion.state, value: pendingAction != nil)
+        .animation(Motion.state, value: deployTarget != nil)
         .onAppear {
             selectDefaultTabIfNeeded(tabs: snapshot.availableTabs)
             appState.refreshNow()
@@ -250,7 +250,8 @@ struct MenuBarContentView: View {
                 AppBrandIcon(size: 26)
 
                 Text("Build Notifier")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(Typography.title)
+                    .typographyTracking(forSize: 15)
                     .foregroundStyle(MenuPalette.ink)
 
                 if let update = appState.availableUpdate {
@@ -290,7 +291,7 @@ struct MenuBarContentView: View {
                     .frame(height: 1)
             }
         }
-        .animation(.spring(response: 0.28, dampingFraction: 0.92), value: isSearchExpanded)
+        .animation(Motion.spring, value: isSearchExpanded)
     }
 
     private var headerActions: some View {
@@ -372,10 +373,10 @@ struct MenuBarContentView: View {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .strokeBorder(isSearchFocused ? AppChrome.accent.opacity(0.7) : AppChrome.glassStroke, lineWidth: 1)
         )
-        .animation(.easeOut(duration: 0.14), value: isSearchFocused)
+        .animation(Motion.hover, value: isSearchFocused)
         .onChange(of: isSearchFocused) { _, focused in
             if !focused && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.92)) {
+                withAnimation(Motion.spring) {
                     isSearchExpanded = false
                 }
             }
@@ -390,7 +391,8 @@ struct MenuBarContentView: View {
 
             VStack(spacing: 6) {
                 Text("Nothing is being watched yet")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(Typography.emptyTitle)
+                    .typographyTracking(forSize: 18)
                     .foregroundStyle(MenuPalette.ink)
 
                 Text("Add CircleCI or Vercel projects to keep recent build health in the menu bar.")
@@ -428,7 +430,7 @@ struct MenuBarContentView: View {
 
     private func buildsList(snapshot: MenuBarSnapshot) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 8) {
+            LazyVStack(alignment: .leading, spacing: 12) {
                 tabContent(snapshot: snapshot)
             }
             .padding(.horizontal, 12)
@@ -762,7 +764,7 @@ struct MenuBarContentView: View {
 
     private func openSearch() {
         if !isSearchExpanded {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.92)) {
+            withAnimation(Motion.spring) {
                 isSearchExpanded = true
             }
         }
@@ -774,7 +776,7 @@ struct MenuBarContentView: View {
     private func closeSearch() {
         isSearchFocused = false
         searchText = ""
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.92)) {
+        withAnimation(Motion.spring) {
             isSearchExpanded = false
         }
     }
@@ -782,7 +784,7 @@ struct MenuBarContentView: View {
     private func clearSearch() {
         searchText = ""
         if !isSearchFocused {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.92)) {
+            withAnimation(Motion.spring) {
                 isSearchExpanded = false
             }
         }
@@ -1069,7 +1071,8 @@ struct ProviderEmptyStateCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 15, weight: .semibold))
+                .font(Typography.title)
+                .typographyTracking(forSize: 15)
                 .foregroundStyle(MenuPalette.ink)
 
             Text(message)
@@ -1078,17 +1081,8 @@ struct ProviderEmptyStateCard: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 6)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(AppChrome.separator)
-                .frame(height: 1)
-        }
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppChrome.separator)
-                .frame(height: 1)
-        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 12)
     }
 }
 
@@ -1100,10 +1094,10 @@ struct PopoverSectionHeader: View {
         HStack {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Typography.sectionHeader)
                     .foregroundStyle(MenuPalette.ink)
                 Text(subtitle)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(Typography.sectionSubtitle)
                     .foregroundStyle(MenuPalette.mutedInk)
             }
             Spacer()

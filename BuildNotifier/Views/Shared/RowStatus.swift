@@ -52,15 +52,17 @@ enum RowStatus {
     /// instead of a static glyph.
     var isInProgress: Bool { self == .running || self == .queued }
 
-    /// SF Symbol for the trailing glyph, or nil when the state needs no glyph
-    /// (in-progress is conveyed by the shimmer + arc instead).
+    /// SF Symbol for the status glyph, or nil for in-progress states (the
+    /// shimmer + spinner carry those instead). Neutral gets a faint dashed circle
+    /// so the leading status column always has an anchor.
     var glyphSymbol: String? {
         switch self {
         case .success: return "checkmark.circle.fill"
         case .failed: return "xmark.circle.fill"
         case .onHold: return "pause.circle.fill"
         case .canceled: return "slash.circle"
-        case .running, .queued, .neutral: return nil
+        case .neutral: return "circle.dashed"
+        case .running, .queued: return nil
         }
     }
 
@@ -87,7 +89,7 @@ enum RowStatus {
 }
 
 /// Leading status affordance for a build/deployment row. Renders nothing for
-/// in-progress (the shimmering label + arc carry that) or neutral states.
+/// in-progress states (the shimmering label + spinner carry those).
 struct StatusGlyph: View {
     let status: RowStatus
 

@@ -91,7 +91,7 @@ struct VercelOnboardingView: View {
                 if let error = appState.error {
                     Text(error)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(AppChrome.danger)
                         .lineLimit(2)
                 }
 
