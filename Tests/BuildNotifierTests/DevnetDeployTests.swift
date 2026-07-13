@@ -42,36 +42,67 @@ final class DevnetDeployTests: XCTestCase {
         XCTAssertTrue(AppState.isDevnetDeploy(build, productionBranches: productionBranches))
     }
 
-    // MARK: - devnetDeployedBranch
+    // MARK: - devnetDeployWorkflowsNewestFirst
 
-    func testDeployedBranchIsLatestSuccessfulDeploy() {
-        let appState = makeAppState(builds: [
-            makeBuild(buildNum: 10, branch: "develop", workflowName: "build-and-deploy", startTime: "2026-07-13T09:00:00Z"),
-            makeBuild(buildNum: 11, branch: "feat/dea-367", workflowName: "devnet-manual-deploy", startTime: "2026-07-13T10:00:00Z")
-        ])
-        XCTAssertEqual(appState.devnetDeployedBranch(forSlug: slug), "feat/dea-367")
+    func testCandidatesAreOrderedNewestFirst() {
+        let candidates = AppState.devnetDeployWorkflowsNewestFirst(
+            builds: [
+                makeBuild(branch: "develop", workflowName: "build-and-deploy", workflowId: "wf-old", startTime: "2026-07-13T09:00:00Z"),
+                makeBuild(branch: "feat/dea-367", workflowName: "devnet-manual-deploy", workflowId: "wf-new", startTime: "2026-07-13T10:00:00Z")
+            ],
+            productionBranches: productionBranches
+        )
+        XCTAssertEqual(candidates.map(\.workflowId), ["wf-new", "wf-old"])
+        XCTAssertEqual(candidates.first?.branch, "feat/dea-367")
     }
 
-    func testRunningDeployDoesNotOverrideLastSuccess() {
-        let appState = makeAppState(builds: [
-            makeBuild(buildNum: 10, branch: "develop", workflowName: "build-and-deploy", status: "success", startTime: "2026-07-13T09:00:00Z"),
-            makeBuild(buildNum: 11, branch: "feat/dea-367", workflowName: "devnet-manual-deploy", status: "running", startTime: "2026-07-13T10:00:00Z")
-        ])
-        XCTAssertEqual(appState.devnetDeployedBranch(forSlug: slug), "develop")
+    func testCandidatesCollapseJobsOfTheSameWorkflow() {
+        // v1.1 returns one build per job; a workflow must appear once.
+        let candidates = AppState.devnetDeployWorkflowsNewestFirst(
+            builds: [
+                makeBuild(branch: "develop", workflowName: "build-and-deploy", status: "success", workflowId: "wf-dep", startTime: "2026-07-13T10:00:00Z"),
+                makeBuild(branch: "develop", workflowName: "build-and-deploy", status: "canceled", workflowId: "wf-dep", startTime: "2026-07-13T10:05:00Z")
+            ],
+            productionBranches: productionBranches
+        )
+        XCTAssertEqual(candidates.map(\.workflowId), ["wf-dep"])
     }
 
-    func testMainDeployIsNotReportedAsDevnet() {
-        let appState = makeAppState(builds: [
-            makeBuild(buildNum: 10, branch: "main", workflowName: "build-and-deploy", startTime: "2026-07-13T10:00:00Z")
-        ])
-        XCTAssertNil(appState.devnetDeployedBranch(forSlug: slug))
+    func testCandidatesExcludeProductionAndNonDeployWorkflows() {
+        let candidates = AppState.devnetDeployWorkflowsNewestFirst(
+            builds: [
+                makeBuild(branch: "main", workflowName: "build-and-deploy", workflowId: "wf-prod"),
+                makeBuild(branch: "develop", workflowName: "ci", workflowId: "wf-ci"),
+                makeBuild(branch: "develop", workflowName: "build-and-deploy", workflowId: "wf-devnet")
+            ],
+            productionBranches: productionBranches
+        )
+        XCTAssertEqual(candidates.map(\.workflowId), ["wf-devnet"])
     }
 
-    func testNoDevnetDeployReturnsNil() {
+    // MARK: - markBranchDeployed baseline
+
+    func testRedeployBaselinesExistingSuccessfulWorkflows() {
         let appState = makeAppState(builds: [
-            makeBuild(buildNum: 10, branch: "develop", workflowName: "ci", startTime: "2026-07-13T10:00:00Z")
+            makeBuild(buildNum: 11, branch: "feat/dea-367", workflowName: "devnet-manual-deploy")
         ])
-        XCTAssertNil(appState.devnetDeployedBranch(forSlug: slug))
+        appState.markBranchDeployed(projectSlug: slug, branch: "feat/dea-367")
+
+        XCTAssertTrue(appState.deployedBranchKeys.contains(AppState.deployKey(projectSlug: slug, branch: "feat/dea-367")))
+        // The already-completed wf-11 must be treated as handled so it can't
+        // instantly re-celebrate on the next poll.
+        XCTAssertTrue(appState.celebratedSuccessWorkflows.contains("wf-11"))
+    }
+
+    func testRedeployDoesNotBaselineOtherBranches() {
+        let appState = makeAppState(builds: [
+            makeBuild(buildNum: 10, branch: "develop", workflowName: "build-and-deploy"),
+            makeBuild(buildNum: 11, branch: "feat/dea-367", workflowName: "devnet-manual-deploy")
+        ])
+        appState.markBranchDeployed(projectSlug: slug, branch: "feat/dea-367")
+
+        XCTAssertTrue(appState.celebratedSuccessWorkflows.contains("wf-11"))
+        XCTAssertFalse(appState.celebratedSuccessWorkflows.contains("wf-10"))
     }
 
     // MARK: - Helpers
@@ -90,6 +121,7 @@ final class DevnetDeployTests: XCTestCase {
         branch: String,
         workflowName: String?,
         status: String = "success",
+        workflowId: String? = nil,
         startTime: String = "2026-07-13T10:00:00Z"
     ) -> Build {
         Build(
@@ -115,7 +147,7 @@ final class DevnetDeployTests: XCTestCase {
             outcome: status == "success" ? "success" : nil,
             status: status,
             retryOf: nil,
-            workflows: WorkflowInfo(jobName: "job", workflowId: "wf-\(buildNum)", workflowName: workflowName),
+            workflows: WorkflowInfo(jobName: "job", workflowId: workflowId ?? "wf-\(buildNum)", workflowName: workflowName),
             pullRequests: nil
         )
     }
