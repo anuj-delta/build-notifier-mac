@@ -3,6 +3,102 @@ import XCTest
 
 @MainActor
 final class BuildPollerTests: XCTestCase {
+    func testFailedFirstSnapshotDoesNotReplayExistingSuccessAfterRecovery() async {
+        enum TestError: Error { case unavailable }
+
+        var shouldFailBuildFetch = true
+        var currentBuilds = [
+            makeBuild(
+                buildNum: 530,
+                branch: "main",
+                committerName: "Anuj Sharma",
+                committerEmail: "anuj.sharma@delta.exchange",
+                workflowId: "wf-existing"
+            )
+        ]
+        var successNotifications: [Build] = []
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in
+                if shouldFailBuildFetch { throw TestError.unavailable }
+                return currentBuilds
+            },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            sendBuildSuccessNotification: { build, _ in
+                successNotifications.append(build)
+            }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+        shouldFailBuildFetch = false
+        await poller.checkNow()
+
+        XCTAssertTrue(successNotifications.isEmpty)
+
+        currentBuilds.insert(
+            makeBuild(
+                buildNum: 531,
+                branch: "feature",
+                committerName: "Anuj Sharma",
+                committerEmail: "anuj.sharma@delta.exchange",
+                workflowId: "wf-new"
+            ),
+            at: 0
+        )
+        await poller.checkNow()
+
+        XCTAssertNotNil(appState.buildsByProject["delta-exchange/api-console"])
+        XCTAssertEqual(successNotifications.map(\.buildNum), [531])
+    }
+
+    func testFailedBaselineLookupDoesNotReplayExistingSuccessAfterRecovery() async {
+        enum TestError: Error { case unavailable }
+
+        var shouldFailWorkflowJobs = true
+        var currentBuilds = [
+            makeBuild(
+                buildNum: 530,
+                branch: "main",
+                committerName: "Anuj Sharma",
+                committerEmail: "anuj.sharma@delta.exchange",
+                workflowId: "wf-existing"
+            )
+        ]
+        var successNotifications: [Build] = []
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in currentBuilds },
+            fetchWorkflowJobs: { _ in
+                if shouldFailWorkflowJobs { throw TestError.unavailable }
+                return [Self.successJob]
+            },
+            sendBuildSuccessNotification: { build, _ in
+                successNotifications.append(build)
+            }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+        shouldFailWorkflowJobs = false
+        await poller.checkNow()
+
+        XCTAssertTrue(successNotifications.isEmpty)
+
+        currentBuilds.insert(
+            makeBuild(
+                buildNum: 531,
+                branch: "feature",
+                committerName: "Anuj Sharma",
+                committerEmail: "anuj.sharma@delta.exchange",
+                workflowId: "wf-new"
+            ),
+            at: 0
+        )
+        await poller.checkNow()
+
+        XCTAssertNotNil(appState.buildsByProject["delta-exchange/api-console"])
+        XCTAssertEqual(successNotifications.map(\.buildNum), [531])
+    }
+
     func testMineModePreservesPreviouslyVisibleWorkflowWhenActorLookupBecomesUnavailable() async throws {
         let firstPollBuilds = [
             makeBuild(
