@@ -15,12 +15,12 @@ final class ConfettiPresenter {
     /// Shows the fullscreen confetti overlay. Repeated calls while it's already
     /// on screen coalesce into a single overlay listing every shipped project and
     /// reset the auto-dismiss timer, rather than stacking panels.
-    func present(projectLabel: String, kind: CelebrationKind) {
+    func present(projectLabel: String, secondaryLabel: String? = nil, kind: CelebrationKind) {
         if panel == nil {
             model.reset()
         }
         model.isDismissing = false
-        model.addProject(projectLabel)
+        model.addSubject(title: projectLabel, subtitle: secondaryLabel)
         model.applyKind(kind)
 
         if panel == nil {

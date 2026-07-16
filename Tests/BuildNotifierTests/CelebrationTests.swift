@@ -162,7 +162,8 @@ final class UserPreferencesCelebrationTests: XCTestCase {
 final class CelebrationKindTests: XCTestCase {
     func testHeadlinesMatchTheDeployTarget() {
         XCTAssertEqual(CelebrationKind.production.headline, "Shipped to production")
-        XCTAssertEqual(CelebrationKind.devnet.headline, "Deployed to devnet")
+        XCTAssertEqual(CelebrationKind.deploy(.devnet).headline, "Deployed to devnet")
+        XCTAssertEqual(CelebrationKind.deploy(.sigma).headline, "Deployed to sigma")
     }
 }
 
@@ -170,20 +171,40 @@ final class CelebrationKindTests: XCTestCase {
 final class ConfettiOverlayModelTests: XCTestCase {
     func testHeadlineReflectsKind() {
         let model = ConfettiOverlayModel()
-        model.applyKind(.devnet)
+        model.applyKind(.deploy(.devnet))
         XCTAssertEqual(model.headline, "Deployed to devnet")
+    }
+
+    func testHeadlineReflectsSigmaKind() {
+        let model = ConfettiOverlayModel()
+        model.applyKind(.deploy(.sigma))
+        XCTAssertEqual(model.headline, "Deployed to sigma")
     }
 
     func testProductionWinsWhenBurstsCoalesce() {
         let model = ConfettiOverlayModel()
         model.applyKind(.production)
-        model.applyKind(.devnet)
+        model.applyKind(.deploy(.devnet))
         XCTAssertEqual(model.headline, "Shipped to production")
+    }
+
+    func testProductionWinsEvenAfterADeploy() {
+        let model = ConfettiOverlayModel()
+        model.applyKind(.deploy(.sigma))
+        model.applyKind(.production)
+        XCTAssertEqual(model.headline, "Shipped to production")
+    }
+
+    func testFirstDeployEnvWinsWhenDeploysCoalesce() {
+        let model = ConfettiOverlayModel()
+        model.applyKind(.deploy(.sigma))
+        model.applyKind(.deploy(.devnet))
+        XCTAssertEqual(model.headline, "Deployed to sigma")
     }
 
     func testResetRestoresDefaultHeadline() {
         let model = ConfettiOverlayModel()
-        model.applyKind(.devnet)
+        model.applyKind(.deploy(.devnet))
         model.reset()
         XCTAssertEqual(model.headline, "Shipped to production")
     }

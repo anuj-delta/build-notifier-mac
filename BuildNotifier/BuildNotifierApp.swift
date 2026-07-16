@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import Sentry
 
 @main
@@ -82,7 +83,14 @@ struct MenuBarLabel: View {
                     .symbolRenderingMode(.hierarchical)
                     .frame(width: 16, height: 14)
             } else if appState.hasActiveBuildActivity {
-                MenuBarSpinnerGlyph()
+                if appState.preferences.showDeployLoader {
+                    MenuBarDeployingGlyph(
+                        style: appState.preferences.deployLoaderStyle,
+                        phase: appState.deploySpinnerPhase
+                    )
+                } else {
+                    MenuBarSpinnerGlyph()
+                }
             } else {
                 Image(systemName: "circle.dashed")
                     .font(.system(size: 13, weight: .semibold))
@@ -98,26 +106,128 @@ struct MenuBarLabel: View {
         if !appState.pendingApprovals.isEmpty {
             return "Approval pending"
         }
+        if appState.isDeploying {
+            return "Deploying"
+        }
         return appState.hasActiveBuildActivity ? "Builds running" : "Idle"
     }
 }
 
+/// Static build-activity glyph. The status bar can't animate a plain SwiftUI
+/// rotation, and animation here is intentionally reserved for the deploy loader,
+/// so this stays a still icon.
 struct MenuBarSpinnerGlyph: View {
-    @State private var isAnimating = false
-
     var body: some View {
         Image(systemName: "arrow.triangle.2.circlepath")
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(.primary)
             .symbolRenderingMode(.monochrome)
-            .rotationEffect(.degrees(isAnimating ? 360 : 0))
             .frame(width: 16, height: 14)
-            .onAppear {
-                if !isAnimating {
-                    isAnimating = true
-                }
-            }
-            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: isAnimating)
+    }
+}
+
+/// The look of the deploy-in-flight menu bar spinner. User-selectable in Settings.
+enum MenuBarDeployStyle: String, CaseIterable, Codable {
+    case arc, dots, dashes
+
+    var label: String {
+        switch self {
+        case .arc: return "Arc sweep"
+        case .dots: return "Chasing dots"
+        case .dashes: return "Slowmo dashes"
+        }
+    }
+}
+
+/// A deploy-in-flight spinner. `MenuBarExtra` only redraws the status item when
+/// the icon's *content* changes (the same reason the idle/spinner/approval swap
+/// works) - a `rotationEffect` transform on the same image is invisible to it.
+/// So each frame renders the glyph rotated by `phase` into a fresh template
+/// `NSImage`; the new image content per tick reads like a swap and redraws.
+/// `phase` comes from `AppState`, advanced by a timer, so the label re-renders.
+/// arc/dots are hand-drawn with Core Graphics; dashes/arrows are SF Symbols.
+struct MenuBarDeployingGlyph: View {
+    let style: MenuBarDeployStyle
+    let phase: Double
+
+    var body: some View {
+        Image(nsImage: Self.frame(style: style, degrees: phase * 360))
+            .frame(width: 16, height: 14)
+    }
+
+    private static let side: CGFloat = 15
+
+    private static func frame(style: MenuBarDeployStyle, degrees: Double) -> NSImage {
+        switch style {
+        case .dashes: return rotatedSymbol("slowmo", degrees: degrees)
+        case .arc: return rotated(degrees: degrees, draw: drawArc)
+        case .dots: return rotated(degrees: degrees, draw: drawDots)
+        }
+    }
+
+    /// Renders `draw` into a template image, rotated clockwise by `degrees`
+    /// (negative CG angle in this bottom-left space) to match the row spinner.
+    private static func rotated(degrees: Double, draw: @escaping (CGContext, CGRect) -> Void) -> NSImage {
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+            ctx.translateBy(x: rect.midX, y: rect.midY)
+            ctx.rotate(by: -CGFloat(degrees) * .pi / 180)
+            ctx.translateBy(x: -rect.midX, y: -rect.midY)
+            draw(ctx, rect)
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
+    private static func rotatedSymbol(_ name: String, degrees: Double) -> NSImage {
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: "Deploying")?
+            .withSymbolConfiguration(config), base.size.width > 0 else { return NSImage() }
+        let image = NSImage(size: base.size, flipped: false) { rect in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+            ctx.translateBy(x: rect.midX, y: rect.midY)
+            ctx.rotate(by: -CGFloat(degrees) * .pi / 180)
+            ctx.translateBy(x: -rect.midX, y: -rect.midY)
+            base.draw(in: rect)
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
+    /// A rounded 270-degree arc with a gap - the headless "arc sweep".
+    private static func drawArc(_ ctx: CGContext, _ rect: CGRect) {
+        let lineWidth: CGFloat = 1.7
+        let radius = min(rect.width, rect.height) / 2 - lineWidth
+        ctx.setLineWidth(lineWidth)
+        ctx.setLineCap(.round)
+        ctx.setStrokeColor(NSColor.black.cgColor)
+        ctx.addArc(
+            center: CGPoint(x: rect.midX, y: rect.midY),
+            radius: radius,
+            startAngle: .pi / 2,
+            endAngle: .pi / 2 - 2 * .pi * 0.75,
+            clockwise: true
+        )
+        ctx.strokePath()
+    }
+
+    /// Twelve dots around a ring with graduated alpha so a bright head fades to a
+    /// tail; rotating the whole thing makes the head chase around.
+    private static func drawDots(_ ctx: CGContext, _ rect: CGRect) {
+        let count = 12
+        let radius = min(rect.width, rect.height) / 2 - 2
+        let dot: CGFloat = 2.1
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        for i in 0..<count {
+            let angle = CGFloat.pi / 2 + CGFloat(i) / CGFloat(count) * 2 * .pi
+            let x = center.x + radius * cos(angle)
+            let y = center.y + radius * sin(angle)
+            let alpha = 0.14 + 0.86 * Double(i) / Double(count - 1)
+            ctx.setFillColor(NSColor(white: 0, alpha: alpha).cgColor)
+            ctx.fillEllipse(in: CGRect(x: x - dot / 2, y: y - dot / 2, width: dot, height: dot))
+        }
     }
 }
 
