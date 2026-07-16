@@ -128,14 +128,13 @@ struct MenuBarSpinnerGlyph: View {
 
 /// The look of the deploy-in-flight menu bar spinner. User-selectable in Settings.
 enum MenuBarDeployStyle: String, CaseIterable, Codable {
-    case arc, dots, dashes, arrows
+    case arc, dots, dashes
 
     var label: String {
         switch self {
         case .arc: return "Arc sweep"
         case .dots: return "Chasing dots"
         case .dashes: return "Slowmo dashes"
-        case .arrows: return "Refresh arrows"
         }
     }
 }
@@ -161,7 +160,6 @@ struct MenuBarDeployingGlyph: View {
     private static func frame(style: MenuBarDeployStyle, degrees: Double) -> NSImage {
         switch style {
         case .dashes: return rotatedSymbol("slowmo", degrees: degrees)
-        case .arrows: return rotatedSymbol("arrow.triangle.2.circlepath", degrees: degrees)
         case .arc: return rotated(degrees: degrees, draw: drawArc)
         case .dots: return rotated(degrees: degrees, draw: drawDots)
         }

@@ -113,7 +113,7 @@ struct UserPreferences: Codable {
         failureSound: CelebrationSound.defaultFailure.rawValue,
         productionBranches: ["main", "master"],
         showDeployLoader: true,
-        deployLoaderStyle: .dashes
+        deployLoaderStyle: .arc
     )
     
     // MARK: - Persistence
