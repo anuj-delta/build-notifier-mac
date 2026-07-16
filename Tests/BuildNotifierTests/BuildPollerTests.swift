@@ -577,6 +577,27 @@ final class BuildPollerTests: XCTestCase {
         XCTAssertNil(appState.deployedBranch(forSlug: Self.slug, env: .devnet))
     }
 
+    func testStoppedWorkflowWithStillRunningJobKeepsOriginalStatus() async {
+        // Defensive: stopped_at is set but a job still reads running (API divergence). We must
+        // not claim success - keep the original rollup status.
+        let builds = [
+            makeRunningV1Build(branch: "feat/x", workflowId: "wf-stuck")
+        ]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob, Self.runningJob] },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "sigma-manual-deploy", status: "running", pipelineId: "pipeline-\(workflowId)", stoppedAt: "2026-07-15T04:42:49Z")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-stuck"], "running")
+    }
+
     // MARK: - Deploying (in-flight) state
 
     func testRunningDeployShowsDeployingNotDeployed() async {
@@ -639,6 +660,35 @@ final class BuildPollerTests: XCTestCase {
         await poller.checkNow()
         XCTAssertNil(appState.deployingBranch(forSlug: Self.slug, env: .devnet))
         XCTAssertEqual(appState.deployedBranch(forSlug: Self.slug, env: .devnet), "feat/dea-367")
+    }
+
+    func testDeployingBadgePreservedWhenProjectFetchFails() async {
+        enum TestError: Error { case unavailable }
+        let builds = [
+            makeBuild(buildNum: 11, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-run", startTime: "2026-03-24T10:00:00Z")
+        ]
+        var shouldFail = false
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in
+                if shouldFail { throw TestError.unavailable }
+                return builds
+            },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "build-and-deploy", status: "running", pipelineId: "pipeline-\(workflowId)")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+        XCTAssertEqual(appState.deployingBranch(forSlug: Self.slug, env: .devnet), "develop")
+
+        // The next poll's build fetch fails; the project drops out of the results, but its
+        // in-flight badge must survive rather than flicker off.
+        shouldFail = true
+        await poller.checkNow()
+        XCTAssertEqual(appState.deployingBranch(forSlug: Self.slug, env: .devnet), "develop")
     }
 
     private func runPollResolvingDeploys(builds: [Build], statuses: [String: String]) async -> AppState {

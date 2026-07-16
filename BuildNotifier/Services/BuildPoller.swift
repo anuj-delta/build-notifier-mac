@@ -313,7 +313,17 @@ final class BuildPoller: ObservableObject {
         for (env, bySlug) in resolvedDeploys.deployed {
             appState.deployedBranchBySlugByEnv[env, default: [:]].merge(bySlug) { _, new in new }
         }
-        appState.deployingBranchBySlugByEnv = resolvedDeploys.deploying
+        // Replace in-flight state only for projects actually polled this cycle: a project whose
+        // build fetch failed keeps its prior deploying badge instead of flickering off, while a
+        // finished or failed deploy on a polled project clears at once.
+        let polledSlugs = Set(newBuildsByProject.keys)
+        for env in DeployEnvironment.allCases {
+            var bySlug = (appState.deployingBranchBySlugByEnv[env] ?? [:]).filter { !polledSlugs.contains($0.key) }
+            for (slug, branch) in resolvedDeploys.deploying[env] ?? [:] {
+                bySlug[slug] = branch
+            }
+            appState.deployingBranchBySlugByEnv[env] = bySlug.isEmpty ? nil : bySlug
+        }
 
         // Resolve the authoritative v2 status for each on-screen row's workflow. v1.1 build
         // status lags v2, so a finished workflow can still report a running job for a short
@@ -438,6 +448,9 @@ final class BuildPoller: ObservableObject {
     /// Job statuses that mark a workflow as failed when its rollup is unreliable.
     private static let failureJobStatuses: Set<String> = ["failed", "error", "timedout", "infrastructure_fail"]
 
+    /// Job statuses that mean a job is still in flight, so the workflow isn't actually done.
+    private static let inProgressJobStatuses: Set<String> = ["running", "queued", "blocked", "on_hold"]
+
     /// v2 workflow rollup status, caching terminal results so finished workflows aren't
     /// refetched on later polls. Returns nil on fetch error (caller treats as not-deployed).
     private func workflowStatus(_ workflowId: String) async -> String? {
@@ -479,6 +492,10 @@ final class BuildPoller: ObservableObject {
         guard let jobs = try? await fetchWorkflowJobs(workflowId), !jobs.isEmpty else { return nil }
         if jobs.contains(where: { Self.failureJobStatuses.contains($0.status) }) { return "failed" }
         if jobs.contains(where: { $0.status == "canceled" }) { return "canceled" }
+        // Only claim success if nothing is still in flight. If `stopped_at` is set yet a job
+        // still reads running/queued (an API divergence beyond the rerun-from-failed bug this
+        // handles), keep the original rollup status rather than silently reporting success.
+        if jobs.contains(where: { Self.inProgressJobStatuses.contains($0.status) }) { return nil }
         return "success"
     }
 
