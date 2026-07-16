@@ -647,9 +647,12 @@ final class BuildPoller: ObservableObject {
             let suppressRecoveredBaseline = newUnresolvedBaselineWorkflows.contains(workflowId)
             let wantsSuccessNotification = notificationsEnabled && preferences.notifyOnSuccess
                 && !appState.notifiedSuccessWorkflows.contains(workflowId)
+            let deployEnv = DeployEnvironment.allCases.first { env in
+                builds.contains { env.isDeploy($0, productionBranches: preferences.productionBranches) }
+            }
             let celebrationKind: CelebrationKind? =
                 (preferences.celebrateProdSuccess && isProdBranch) ? .production
-                : (preferences.celebrateDeployedBranches && isDeployedBranch) ? .devnet
+                : (preferences.celebrateDeployedBranches && isDeployedBranch) ? .deploy(deployEnv ?? .devnet)
                 : nil
             let wantsConfetti = celebrationKind != nil
                 && !appState.celebratedSuccessWorkflows.contains(workflowId)
@@ -677,12 +680,18 @@ final class BuildPoller: ObservableObject {
                             newSuccessWorkflows.insert(workflowId)
                         }
                         if wantsConfetti, !suppressRecoveredBaseline, let celebrationKind {
-                            appState.celebrate(projectLabel: representativeBuild.projectSlug, kind: celebrationKind)
+                            let label: String
+                            if case .deploy = celebrationKind, let branch {
+                                label = "\(representativeBuild.reponame ?? representativeBuild.projectSlug) · \(branch)"
+                            } else {
+                                label = representativeBuild.projectSlug
+                            }
+                            appState.celebrate(projectLabel: label, kind: celebrationKind)
                             newCelebratedSuccess.insert(workflowId)
                             // One modal deploy = one celebration: consume the
                             // deployed-branch marker so later workflows on the same
                             // branch don't re-celebrate. Re-deploying re-arms it.
-                            if celebrationKind == .devnet, let branch {
+                            if case .deploy = celebrationKind, let branch {
                                 appState.deployedBranchKeys.remove(
                                     AppState.deployKey(projectSlug: representativeBuild.projectSlug, branch: branch)
                                 )

@@ -1,15 +1,16 @@
 import SwiftUI
 
 /// What a confetti burst is celebrating, which sets the banner headline. A
-/// production deploy and a devnet manual-deploy read differently to the user.
-enum CelebrationKind {
+/// production deploy and a non-production deploy (devnet, sigma, ...) read
+/// differently to the user, and each environment names itself in the banner.
+enum CelebrationKind: Equatable {
     case production
-    case devnet
+    case deploy(DeployEnvironment)
 
     var headline: String {
         switch self {
         case .production: return "Shipped to production"
-        case .devnet: return "Deployed to devnet"
+        case .deploy(let env): return "Deployed to \(env.label)"
         }
     }
 }
