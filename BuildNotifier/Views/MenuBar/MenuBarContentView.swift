@@ -597,7 +597,8 @@ struct MenuBarContentView: View {
                 ProjectSection(
                     project: item.project,
                     buildsByBranch: item.builds,
-                    deployedBranch: appState.devnetDeployedBranch(forSlug: item.project.slug),
+                    deployedBranchesByEnv: appState.deployedBranchesByEnv(forSlug: item.project.slug),
+                    deployingBranchesByEnv: appState.deployingBranchesByEnv(forSlug: item.project.slug),
                     workflowStatusByWorkflowId: appState.workflowStatusByWorkflowId,
                     isFiltered: snapshot.hasSearchQuery,
                     approvalCapableWorkflowIds: appState.approvalCapableWorkflowIds,
@@ -689,7 +690,8 @@ struct MenuBarContentView: View {
                 ProjectSection(
                     project: item.project,
                     buildsByBranch: item.builds,
-                    deployedBranch: appState.devnetDeployedBranch(forSlug: item.project.slug),
+                    deployedBranchesByEnv: appState.deployedBranchesByEnv(forSlug: item.project.slug),
+                    deployingBranchesByEnv: appState.deployingBranchesByEnv(forSlug: item.project.slug),
                     workflowStatusByWorkflowId: appState.workflowStatusByWorkflowId,
                     isFiltered: snapshot.hasSearchQuery,
                     approvalCapableWorkflowIds: appState.approvalCapableWorkflowIds,

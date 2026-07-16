@@ -7,12 +7,25 @@ struct WorkflowDetails: Codable {
     let name: String?
     let status: String?
     let pipelineId: String?
+    /// Set once the workflow has terminated. CircleCI's rollup `status` can stay
+    /// non-terminal (`running`/`failing`) after a rerun-from-failed even though the
+    /// workflow has stopped, so `stoppedAt` is the reliable "it's done" signal.
+    let stoppedAt: String?
+
+    init(id: String, name: String?, status: String?, pipelineId: String?, stoppedAt: String? = nil) {
+        self.id = id
+        self.name = name
+        self.status = status
+        self.pipelineId = pipelineId
+        self.stoppedAt = stoppedAt
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
         case name
         case status
         case pipelineId = "pipeline_id"
+        case stoppedAt = "stopped_at"
     }
 }
 

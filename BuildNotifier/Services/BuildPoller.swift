@@ -55,9 +55,9 @@ final class BuildPoller: ObservableObject {
     /// `running`, `on_hold`, `not_run`, and `failing` are transient and always refetched.
     private static let terminalWorkflowStatuses: Set<String> = ["success", "failed", "error", "canceled", "unauthorized"]
 
-    /// Cap on how many recent devnet-deploy workflows to probe per project when resolving
-    /// the live branch. The live deploy is effectively always among the newest few.
-    private static let maxDevnetWorkflowChecks = 8
+    /// Cap on how many recent deploy workflows to probe per project and environment when
+    /// resolving the live branch. The live deploy is effectively always among the newest few.
+    private static let maxDeployWorkflowChecks = 8
 
     /// Upper bound on the terminal-status cache so memory stays flat across a long session.
     private static let maxCachedWorkflowStatuses = 500
@@ -301,15 +301,29 @@ final class BuildPoller: ObservableObject {
         self.cachedActorByPipelineId = mergedPipelineActors
         lastPollTime = Date()
 
-        // Merge rather than replace: a devnet deploy stays live until a newer one
-        // succeeds, so a project that yields no fresh success this poll (or whose v2
-        // status fetch transiently failed) keeps its last known branch instead of
-        // having the badge flicker off.
-        let resolvedDeploys = await resolveDevnetDeployedBranches(
+        // Merge the live branch rather than replace: a deploy stays live until a newer one
+        // succeeds, so a project that yields no fresh success this poll (or whose v2 status
+        // fetch transiently failed) keeps its last known branch instead of the badge
+        // flickering off. The in-flight branch is replaced wholesale so a finished or failed
+        // deploy clears at once - on failure the row falls back to the retained live branch.
+        let resolvedDeploys = await resolveDeployedBranches(
             buildsByProject: newBuildsByProject,
             productionBranches: appState.preferences.productionBranches
         )
-        appState.devnetDeployedBranchBySlug.merge(resolvedDeploys) { _, new in new }
+        for (env, bySlug) in resolvedDeploys.deployed {
+            appState.deployedBranchBySlugByEnv[env, default: [:]].merge(bySlug) { _, new in new }
+        }
+        // Replace in-flight state only for projects actually polled this cycle: a project whose
+        // build fetch failed keeps its prior deploying badge instead of flickering off, while a
+        // finished or failed deploy on a polled project clears at once.
+        let polledSlugs = Set(newBuildsByProject.keys)
+        for env in DeployEnvironment.allCases {
+            var bySlug = (appState.deployingBranchBySlugByEnv[env] ?? [:]).filter { !polledSlugs.contains($0.key) }
+            for (slug, branch) in resolvedDeploys.deploying[env] ?? [:] {
+                bySlug[slug] = branch
+            }
+            appState.deployingBranchBySlugByEnv[env] = bySlug.isEmpty ? nil : bySlug
+        }
 
         // Resolve the authoritative v2 status for each on-screen row's workflow. v1.1 build
         // status lags v2, so a finished workflow can still report a running job for a short
@@ -361,36 +375,54 @@ final class BuildPoller: ObservableObject {
         appState.notifiedApprovals.formUnion(newPendingApprovals.map(\.id))
     }
 
-    /// For each project, the branch live on devnet: the newest devnet-deploy workflow whose
-    /// v2 rollup status is `success`. v1.1 can't distinguish a pending deploy from a finished
-    /// one, so the completion check is the workflow status CircleCI itself reports.
-    private func resolveDevnetDeployedBranches(
+    /// v2 rollup statuses that mean a deploy is still in flight (not yet terminal).
+    private static let inProgressWorkflowStatuses: Set<String> = ["running", "on_hold", "failing"]
+
+    /// For each environment and project, the branch live there (newest deploy workflow whose
+    /// v2 rollup status is `success`) and the branch mid-deploy (newest deploy workflow that
+    /// is still in flight). v1.1 can't distinguish a pending deploy from a finished one, so the
+    /// checks run against the workflow status CircleCI itself reports.
+    private func resolveDeployedBranches(
         buildsByProject: [String: [Build]],
         productionBranches: [String]
-    ) async -> [String: String] {
-        await withTaskGroup(of: (slug: String, branch: String)?.self) { group in
-            for (slug, builds) in buildsByProject {
-                let candidates = AppState.devnetDeployWorkflowsNewestFirst(
-                    builds: builds,
-                    productionBranches: productionBranches
-                )
-                group.addTask { @MainActor in
-                    for candidate in candidates.prefix(Self.maxDevnetWorkflowChecks) {
-                        if await self.workflowStatus(candidate.workflowId) == "success" {
-                            return (slug, candidate.branch)
+    ) async -> (deployed: [DeployEnvironment: [String: String]], deploying: [DeployEnvironment: [String: String]]) {
+        typealias Resolved = (env: DeployEnvironment, slug: String, deployed: String?, deploying: String?)
+        return await withTaskGroup(of: Resolved?.self) { group in
+            for env in DeployEnvironment.allCases {
+                for (slug, builds) in buildsByProject {
+                    let candidates = env.deployWorkflowsNewestFirst(
+                        builds: builds,
+                        productionBranches: productionBranches
+                    )
+                    group.addTask { @MainActor in
+                        var deployed: String?
+                        var deploying: String?
+                        for candidate in candidates.prefix(Self.maxDeployWorkflowChecks) {
+                            let status = await self.workflowStatus(candidate.workflowId)
+                            if deploying == nil, let status, Self.inProgressWorkflowStatuses.contains(status) {
+                                deploying = candidate.branch
+                            }
+                            if deployed == nil, status == "success" {
+                                deployed = candidate.branch
+                            }
+                            if deployed != nil, deploying != nil { break }
                         }
+                        if deployed == nil, candidates.count > Self.maxDeployWorkflowChecks {
+                            print("[BuildPoller] \(slug): no successful \(env.label) deploy in newest \(Self.maxDeployWorkflowChecks) workflows; older ones not probed")
+                        }
+                        if deployed == nil, deploying == nil { return nil }
+                        return (env, slug, deployed, deploying)
                     }
-                    if candidates.count > Self.maxDevnetWorkflowChecks {
-                        print("[BuildPoller] \(slug): no successful devnet deploy in newest \(Self.maxDevnetWorkflowChecks) workflows; older ones not probed")
-                    }
-                    return nil
                 }
             }
-            var result: [String: String] = [:]
+            var deployed: [DeployEnvironment: [String: String]] = [:]
+            var deploying: [DeployEnvironment: [String: String]] = [:]
             for await found in group {
-                if let found { result[found.slug] = found.branch }
+                guard let found else { continue }
+                if let branch = found.deployed { deployed[found.env, default: [:]][found.slug] = branch }
+                if let branch = found.deploying { deploying[found.env, default: [:]][found.slug] = branch }
             }
-            return result
+            return (deployed, deploying)
         }
     }
 
@@ -413,28 +445,58 @@ final class BuildPoller: ObservableObject {
         }
     }
 
+    /// Job statuses that mark a workflow as failed when its rollup is unreliable.
+    private static let failureJobStatuses: Set<String> = ["failed", "error", "timedout", "infrastructure_fail"]
+
+    /// Job statuses that mean a job is still in flight, so the workflow isn't actually done.
+    private static let inProgressJobStatuses: Set<String> = ["running", "queued", "blocked", "on_hold"]
+
     /// v2 workflow rollup status, caching terminal results so finished workflows aren't
     /// refetched on later polls. Returns nil on fetch error (caller treats as not-deployed).
     private func workflowStatus(_ workflowId: String) async -> String? {
         if let thisPoll = workflowStatusThisPoll[workflowId] { return thisPoll }
         if let cached = cachedTerminalWorkflowStatusById[workflowId] { return cached }
         do {
-            let status = try await fetchWorkflow(workflowId).status
-            if let status {
-                workflowStatusThisPoll[workflowId] = status
-                if Self.terminalWorkflowStatuses.contains(status) {
-                    // Bounded so a long-running session can't accumulate an entry per
-                    // workflow ever seen; on overflow we drop the cache and refetch lazily.
-                    if cachedTerminalWorkflowStatusById.count >= Self.maxCachedWorkflowStatuses {
-                        cachedTerminalWorkflowStatusById.removeAll(keepingCapacity: true)
-                    }
-                    cachedTerminalWorkflowStatusById[workflowId] = status
+            let workflow = try await fetchWorkflow(workflowId)
+            guard var status = workflow.status else { return nil }
+
+            // A rerun-from-failed can leave the rollup stuck at a non-terminal value
+            // (`running`/`failing`) even though the workflow has stopped, which would spin the
+            // row forever. Once `stopped_at` is set, trust the jobs over the stuck rollup.
+            if workflow.stoppedAt != nil,
+               !Self.terminalWorkflowStatuses.contains(status),
+               let derived = await deriveTerminalStatusFromJobs(workflowId) {
+                status = derived
+            }
+
+            workflowStatusThisPoll[workflowId] = status
+            if Self.terminalWorkflowStatuses.contains(status) {
+                // Bounded so a long-running session can't accumulate an entry per
+                // workflow ever seen; on overflow we drop the cache and refetch lazily.
+                if cachedTerminalWorkflowStatusById.count >= Self.maxCachedWorkflowStatuses {
+                    cachedTerminalWorkflowStatusById.removeAll(keepingCapacity: true)
                 }
+                cachedTerminalWorkflowStatusById[workflowId] = status
             }
             return status
         } catch {
             return nil
         }
+    }
+
+    /// Terminal status of a stopped workflow whose rollup is unreliable, read off its jobs:
+    /// any failed job -> `failed`, else any canceled job -> `canceled`, else `success`.
+    /// Returns nil if the jobs can't be fetched or the workflow has none, so the caller keeps
+    /// the original rollup status rather than guessing.
+    private func deriveTerminalStatusFromJobs(_ workflowId: String) async -> String? {
+        guard let jobs = try? await fetchWorkflowJobs(workflowId), !jobs.isEmpty else { return nil }
+        if jobs.contains(where: { Self.failureJobStatuses.contains($0.status) }) { return "failed" }
+        if jobs.contains(where: { $0.status == "canceled" }) { return "canceled" }
+        // Only claim success if nothing is still in flight. If `stopped_at` is set yet a job
+        // still reads running/queued (an API divergence beyond the rerun-from-failed bug this
+        // handles), keep the original rollup status rather than silently reporting success.
+        if jobs.contains(where: { Self.inProgressJobStatuses.contains($0.status) }) { return nil }
+        return "success"
     }
 
     private func establishNotificationBaseline(

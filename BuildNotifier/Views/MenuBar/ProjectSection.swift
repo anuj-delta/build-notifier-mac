@@ -36,10 +36,18 @@ private struct PointingHandCursor: ViewModifier {
     }
 }
 
+/// A "currently deployed" / "deploying now" marker shown on a build row for one environment.
+struct DeployBadge: Identifiable, Equatable {
+    let env: DeployEnvironment
+    let isDeploying: Bool
+    var id: DeployEnvironment { env }
+}
+
 struct ProjectSection: View {
     let project: WatchedProject
     let buildsByBranch: [String: [Build]]
-    let deployedBranch: String?
+    let deployedBranchesByEnv: [DeployEnvironment: String]
+    let deployingBranchesByEnv: [DeployEnvironment: String]
     let workflowStatusByWorkflowId: [String: String]
     let isFiltered: Bool
     let approvalCapableWorkflowIds: Set<String>
@@ -180,7 +188,7 @@ struct ProjectSection: View {
                                 resolvedWorkflowStatus: workflowId.flatMap { workflowStatusByWorkflowId[$0] },
                                 canAutoApprove: workflowId.map { approvalCapableWorkflowIds.contains($0) } ?? false,
                                 isAutoApproveArmed: workflowId.map { armedAutoApprovalWorkflowIds.contains($0) } ?? false,
-                                isDevnetDeployed: deployedBranch.map { !$0.isEmpty && build.branch == $0 } ?? false,
+                                deployBadges: deployBadges(for: build),
                                 onRetry: { onRetry(build) },
                                 onCancel: { onCancel(build) },
                                 onAutoApprove: { onArmAutoApprove(build) },
@@ -200,6 +208,17 @@ struct ProjectSection: View {
         }
     }
 
+    /// Deploy badges for this build's branch, in a stable order. An in-flight deploy takes
+    /// precedence over a live one for the same environment so the row reads as "deploying".
+    private func deployBadges(for build: Build) -> [DeployBadge] {
+        guard let branch = build.branch, !branch.isEmpty else { return [] }
+        return DeployEnvironment.allCases.compactMap { env in
+            if deployingBranchesByEnv[env] == branch { return DeployBadge(env: env, isDeploying: true) }
+            if deployedBranchesByEnv[env] == branch { return DeployBadge(env: env, isDeploying: false) }
+            return nil
+        }
+    }
+
     private var sortedBranches: [String] {
         buildsByBranch.keys.sorted { b1, b2 in
             let date1 = buildsByBranch[b1]?.compactMap { $0.activityDate }.max() ?? .distantPast
@@ -216,7 +235,7 @@ struct BuildRow: View {
     let resolvedWorkflowStatus: String?
     let canAutoApprove: Bool
     let isAutoApproveArmed: Bool
-    let isDevnetDeployed: Bool
+    let deployBadges: [DeployBadge]
     let onRetry: () -> Void
     let onCancel: () -> Void
     let onAutoApprove: () -> Void
@@ -288,14 +307,14 @@ struct BuildRow: View {
                         .foregroundStyle(AppChrome.textMuted)
                         .monospacedDigit()
 
-                    // One second slot: the devnet badge sits here, and the hover
+                    // One second slot: the deploy badge sits here, and the hover
                     // actions swap into the same place. Stacking both would grow
                     // the row past its two text lines and leave the action button
                     // floating below the row.
-                    if isDevnetDeployed || hasActions {
+                    if !deployBadges.isEmpty || hasActions {
                         ZStack(alignment: .trailing) {
-                            if isDevnetDeployed {
-                                devnetIndicator
+                            if !deployBadges.isEmpty {
+                                deployIndicator
                                     .opacity(showActions ? 0 : 1)
                             }
                             if hasActions {
@@ -308,7 +327,10 @@ struct BuildRow: View {
                         .animation(Motion.hover, value: showActions)
                     }
                 }
-                .frame(width: RowLayout.trailingColumnWidth, alignment: .trailing)
+                // Grows past its base width to fit multiple badges (e.g. devnet + sigma) so the
+                // subject text truncates instead of being overlapped; the timestamp stays
+                // right-aligned to the row edge either way.
+                .frame(minWidth: RowLayout.trailingColumnWidth, alignment: .trailing)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 9)
@@ -347,16 +369,24 @@ struct BuildRow: View {
         .padding(.top, 1)
     }
 
-    private var devnetIndicator: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "hexagon.fill")
-                .font(.system(size: 8, weight: .semibold))
-            Text("devnet")
-                .font(.system(size: 11, weight: .semibold))
+    private var deployIndicator: some View {
+        HStack(spacing: 7) {
+            ForEach(deployBadges) { badge in
+                HStack(spacing: 3) {
+                    Image(systemName: badge.env.badgeIcon)
+                        .font(.system(size: 8, weight: .semibold))
+                        .symbolEffect(.pulse, options: .repeating, isActive: badge.isDeploying)
+                    Text(badge.env.label)
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(badge.env.badgeColor)
+                // Deploying reads as "working": a pulsing icon over a dimmed chip, so it stays
+                // distinct from the solid live badge even when both envs show at once.
+                .opacity(badge.isDeploying ? 0.7 : 1)
+                .help(badge.isDeploying ? "Deploying to \(badge.env.label)…" : "Currently deployed to \(badge.env.label)")
+            }
         }
-        .foregroundStyle(AppChrome.deploy)
         .fixedSize(horizontal: true, vertical: false)
-        .help("Currently deployed to devnet")
     }
 
     private var trailingActions: some View {
