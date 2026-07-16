@@ -30,9 +30,11 @@ final class ConfettiOverlayModel {
     }
 
     /// Sets the banner headline for this burst. When bursts coalesce into one
-    /// overlay, a production deploy wins over a devnet deploy.
+    /// overlay, a production deploy wins over any deploy, and the first deploy
+    /// environment resolved wins over later ones so the headline stays stable.
     func applyKind(_ kind: CelebrationKind) {
         if resolvedKind == .production { return }
+        if case .deploy = resolvedKind, case .deploy = kind { return }
         resolvedKind = kind
         headline = kind.headline
     }

@@ -188,6 +188,20 @@ final class ConfettiOverlayModelTests: XCTestCase {
         XCTAssertEqual(model.headline, "Shipped to production")
     }
 
+    func testProductionWinsEvenAfterADeploy() {
+        let model = ConfettiOverlayModel()
+        model.applyKind(.deploy(.sigma))
+        model.applyKind(.production)
+        XCTAssertEqual(model.headline, "Shipped to production")
+    }
+
+    func testFirstDeployEnvWinsWhenDeploysCoalesce() {
+        let model = ConfettiOverlayModel()
+        model.applyKind(.deploy(.sigma))
+        model.applyKind(.deploy(.devnet))
+        XCTAssertEqual(model.headline, "Deployed to sigma")
+    }
+
     func testResetRestoresDefaultHeadline() {
         let model = ConfettiOverlayModel()
         model.applyKind(.deploy(.devnet))
