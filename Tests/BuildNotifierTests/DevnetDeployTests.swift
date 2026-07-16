@@ -5,47 +5,66 @@ import XCTest
 final class DevnetDeployTests: XCTestCase {
     private let productionBranches = ["main", "master"]
 
-    // MARK: - isDevnetDeploy
+    // MARK: - isDeploy (devnet)
 
     func testManualDeployOnFeatureBranchIsDevnet() {
         let build = makeBuild(branch: "feat/dea-367", workflowName: "devnet-manual-deploy")
-        XCTAssertTrue(AppState.isDevnetDeploy(build, productionBranches: productionBranches))
+        XCTAssertTrue(DeployEnvironment.devnet.isDeploy(build, productionBranches: productionBranches))
     }
 
     func testBuildAndDeployOnDevelopIsDevnet() {
         let build = makeBuild(branch: "develop", workflowName: "build-and-deploy")
-        XCTAssertTrue(AppState.isDevnetDeploy(build, productionBranches: productionBranches))
+        XCTAssertTrue(DeployEnvironment.devnet.isDeploy(build, productionBranches: productionBranches))
     }
 
     func testBuildAndDeployOnMainIsNotDevnet() {
         let build = makeBuild(branch: "main", workflowName: "build-and-deploy")
-        XCTAssertFalse(AppState.isDevnetDeploy(build, productionBranches: productionBranches))
+        XCTAssertFalse(DeployEnvironment.devnet.isDeploy(build, productionBranches: productionBranches))
     }
 
     func testManualDeployOnMainStillCountsAsDevnet() {
         let build = makeBuild(branch: "main", workflowName: "devnet-manual-deploy")
-        XCTAssertTrue(AppState.isDevnetDeploy(build, productionBranches: productionBranches))
+        XCTAssertTrue(DeployEnvironment.devnet.isDeploy(build, productionBranches: productionBranches))
     }
 
     func testUnrelatedWorkflowIsNotDevnet() {
         let build = makeBuild(branch: "develop", workflowName: "ci")
-        XCTAssertFalse(AppState.isDevnetDeploy(build, productionBranches: productionBranches))
+        XCTAssertFalse(DeployEnvironment.devnet.isDeploy(build, productionBranches: productionBranches))
     }
 
     func testMissingWorkflowNameIsNotDevnet() {
         let build = makeBuild(branch: "develop", workflowName: nil)
-        XCTAssertFalse(AppState.isDevnetDeploy(build, productionBranches: productionBranches))
+        XCTAssertFalse(DeployEnvironment.devnet.isDeploy(build, productionBranches: productionBranches))
     }
 
     func testWorkflowMatchIsCaseInsensitive() {
         let build = makeBuild(branch: "develop", workflowName: "Build-And-Deploy")
-        XCTAssertTrue(AppState.isDevnetDeploy(build, productionBranches: productionBranches))
+        XCTAssertTrue(DeployEnvironment.devnet.isDeploy(build, productionBranches: productionBranches))
     }
 
-    // MARK: - devnetDeployWorkflowsNewestFirst
+    // MARK: - isDeploy (sigma)
+
+    func testSigmaManualDeployIsSigma() {
+        let build = makeBuild(branch: "INFRA-782/sigma-chatbot", workflowName: "sigma-manual-deploy")
+        XCTAssertTrue(DeployEnvironment.sigma.isDeploy(build, productionBranches: productionBranches))
+    }
+
+    func testSigmaManualDeployOnMainStillCountsAsSigma() {
+        let build = makeBuild(branch: "main", workflowName: "sigma-manual-deploy")
+        XCTAssertTrue(DeployEnvironment.sigma.isDeploy(build, productionBranches: productionBranches))
+    }
+
+    func testDevnetAndSigmaWorkflowsDoNotCrossMatch() {
+        let devnetBuild = makeBuild(branch: "develop", workflowName: "build-and-deploy")
+        let sigmaBuild = makeBuild(branch: "feat/x", workflowName: "sigma-manual-deploy")
+        XCTAssertFalse(DeployEnvironment.sigma.isDeploy(devnetBuild, productionBranches: productionBranches))
+        XCTAssertFalse(DeployEnvironment.devnet.isDeploy(sigmaBuild, productionBranches: productionBranches))
+    }
+
+    // MARK: - deployWorkflowsNewestFirst
 
     func testCandidatesAreOrderedNewestFirst() {
-        let candidates = AppState.devnetDeployWorkflowsNewestFirst(
+        let candidates = DeployEnvironment.devnet.deployWorkflowsNewestFirst(
             builds: [
                 makeBuild(branch: "develop", workflowName: "build-and-deploy", workflowId: "wf-old", startTime: "2026-07-13T09:00:00Z"),
                 makeBuild(branch: "feat/dea-367", workflowName: "devnet-manual-deploy", workflowId: "wf-new", startTime: "2026-07-13T10:00:00Z")
@@ -58,7 +77,7 @@ final class DevnetDeployTests: XCTestCase {
 
     func testCandidatesCollapseJobsOfTheSameWorkflow() {
         // v1.1 returns one build per job; a workflow must appear once.
-        let candidates = AppState.devnetDeployWorkflowsNewestFirst(
+        let candidates = DeployEnvironment.devnet.deployWorkflowsNewestFirst(
             builds: [
                 makeBuild(branch: "develop", workflowName: "build-and-deploy", status: "success", workflowId: "wf-dep", startTime: "2026-07-13T10:00:00Z"),
                 makeBuild(branch: "develop", workflowName: "build-and-deploy", status: "canceled", workflowId: "wf-dep", startTime: "2026-07-13T10:05:00Z")
@@ -69,7 +88,7 @@ final class DevnetDeployTests: XCTestCase {
     }
 
     func testCandidatesExcludeProductionAndNonDeployWorkflows() {
-        let candidates = AppState.devnetDeployWorkflowsNewestFirst(
+        let candidates = DeployEnvironment.devnet.deployWorkflowsNewestFirst(
             builds: [
                 makeBuild(branch: "main", workflowName: "build-and-deploy", workflowId: "wf-prod"),
                 makeBuild(branch: "develop", workflowName: "ci", workflowId: "wf-ci"),
@@ -78,6 +97,17 @@ final class DevnetDeployTests: XCTestCase {
             productionBranches: productionBranches
         )
         XCTAssertEqual(candidates.map(\.workflowId), ["wf-devnet"])
+    }
+
+    func testSigmaCandidatesOnlyMatchSigmaWorkflow() {
+        let candidates = DeployEnvironment.sigma.deployWorkflowsNewestFirst(
+            builds: [
+                makeBuild(branch: "develop", workflowName: "build-and-deploy", workflowId: "wf-devnet"),
+                makeBuild(branch: "feat/x", workflowName: "sigma-manual-deploy", workflowId: "wf-sigma")
+            ],
+            productionBranches: productionBranches
+        )
+        XCTAssertEqual(candidates.map(\.workflowId), ["wf-sigma"])
     }
 
     // MARK: - markBranchDeployed baseline
@@ -130,10 +160,10 @@ final class DevnetDeployTests: XCTestCase {
             buildNum: buildNum,
             branch: branch,
             vcsRevision: "rev-\(buildNum)",
-            committerName: "Anuj Sharma",
-            committerEmail: "anuj.sharma@delta.exchange",
-            authorName: "Anuj Sharma",
-            authorEmail: "anuj.sharma@delta.exchange",
+            committerName: "Test Author",
+            committerEmail: "author@example.test",
+            authorName: "Test Author",
+            authorEmail: "author@example.test",
             subject: "Commit \(buildNum)",
             body: nil,
             why: "github",

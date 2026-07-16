@@ -223,28 +223,17 @@ final class AppState {
         }
     }
 
-    /// Workflow names that deploy to devnet. `devnet-manual-deploy` deploys any branch on
-    /// demand; `build-and-deploy` continuously deploys non-production branches (e.g. develop).
-    private static let devnetDeployWorkflows: Set<String> = ["devnet-manual-deploy", "build-and-deploy"]
+    /// The branch currently live on each deploy environment per project, resolved during
+    /// polling from the authoritative v2 workflow rollup status (the same status CircleCI's
+    /// own pipeline list shows). Keyed by environment, then project slug. Populated by
+    /// `BuildPoller`.
+    var deployedBranchBySlugByEnv: [DeployEnvironment: [String: String]] = [:]
 
-    /// Whether a build represents a deploy to devnet. `build-and-deploy` also runs on
-    /// production branches for prod, so those are excluded via `productionBranches`.
-    static func isDevnetDeploy(_ build: Build, productionBranches: [String]) -> Bool {
-        guard let workflow = build.workflows?.workflowName?.lowercased(),
-              devnetDeployWorkflows.contains(workflow) else {
-            return false
-        }
-        if workflow == "build-and-deploy",
-           ProductionBranchMatcher.isProduction(branch: build.branch, patterns: productionBranches) {
-            return false
-        }
-        return true
-    }
-
-    /// The branch currently live on devnet per project, resolved during polling from the
-    /// authoritative v2 workflow rollup status (the same status CircleCI's own pipeline list
-    /// shows). Keyed by project slug. Populated by `BuildPoller`.
-    var devnetDeployedBranchBySlug: [String: String] = [:]
+    /// The branch with an in-flight deploy to each environment per project (its deploy
+    /// workflow is still running/on-hold, not yet terminal). Keyed by environment, then
+    /// project slug. Replaced every poll so a finished or failed deploy clears immediately -
+    /// on failure the row falls back to whatever `deployedBranchBySlugByEnv` still holds.
+    var deployingBranchBySlugByEnv: [DeployEnvironment: [String: String]] = [:]
 
     /// v2 workflow rollup status keyed by workflow id, for the workflows backing the rows
     /// currently on screen. Populated by `BuildPoller`. Rows trust this over the v1.1 build
@@ -252,34 +241,39 @@ final class AppState {
     /// reporting a running job for a short window, which otherwise leaves the row spinning.
     var workflowStatusByWorkflowId: [String: String] = [:]
 
-    /// The branch currently live on devnet for a project: the branch of the most recent
-    /// devnet deploy whose whole workflow succeeded. v1.1 alone can't tell a still-pending
+    /// The branch currently live on `env` for a project: the branch of the most recent deploy
+    /// to that environment whose whole workflow succeeded. v1.1 alone can't tell a still-pending
     /// deploy from a finished one (it omits `not_run` jobs), so the completed-success check
     /// runs against the v2 workflow status in `BuildPoller` and the result is cached here.
-    func devnetDeployedBranch(forSlug slug: String) -> String? {
-        devnetDeployedBranchBySlug[slug]
+    func deployedBranch(forSlug slug: String, env: DeployEnvironment) -> String? {
+        deployedBranchBySlugByEnv[env]?[slug]
     }
 
-    /// Unique devnet-deploy workflows for a project's builds, newest first. Callers probe
-    /// these against the v2 workflow status and take the newest one that reads `success`.
-    static func devnetDeployWorkflowsNewestFirst(
-        builds: [Build],
-        productionBranches: [String]
-    ) -> [(workflowId: String, branch: String)] {
-        var latestByWorkflow: [String: Build] = [:]
-        for build in builds where isDevnetDeploy(build, productionBranches: productionBranches) {
-            guard let workflowId = build.workflows?.workflowId else { continue }
-            if let existing = latestByWorkflow[workflowId],
-               (existing.activityDate ?? .distantPast) >= (build.activityDate ?? .distantPast) {
-                continue
+    /// The branch live on each environment for a project, for the environments that have one.
+    func deployedBranchesByEnv(forSlug slug: String) -> [DeployEnvironment: String] {
+        var result: [DeployEnvironment: String] = [:]
+        for env in DeployEnvironment.allCases {
+            if let branch = deployedBranchBySlugByEnv[env]?[slug] {
+                result[env] = branch
             }
-            latestByWorkflow[workflowId] = build
         }
-        return latestByWorkflow
-            .sorted { ($0.value.activityDate ?? .distantPast) > ($1.value.activityDate ?? .distantPast) }
-            .compactMap { workflowId, build in
-                build.branch.map { (workflowId: workflowId, branch: $0) }
+        return result
+    }
+
+    /// The branch mid-deploy to `env` for a project, if any.
+    func deployingBranch(forSlug slug: String, env: DeployEnvironment) -> String? {
+        deployingBranchBySlugByEnv[env]?[slug]
+    }
+
+    /// The branch mid-deploy to each environment for a project, for the environments that have one.
+    func deployingBranchesByEnv(forSlug slug: String) -> [DeployEnvironment: String] {
+        var result: [DeployEnvironment: String] = [:]
+        for env in DeployEnvironment.allCases {
+            if let branch = deployingBranchBySlugByEnv[env]?[slug] {
+                result[env] = branch
             }
+        }
+        return result
     }
 
     // MARK: - Actions

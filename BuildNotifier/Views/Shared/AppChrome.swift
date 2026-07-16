@@ -123,12 +123,38 @@ enum AppChrome {
         dark: NSColor(calibratedRed: 0.61, green: 0.53, blue: 1.0, alpha: 0.18)
     )
 
+    /// The sigma-deploy signal. Teal so it reads as its own environment, distinct from the
+    /// violet devnet badge, the blue PR pill, and the green build status.
+    static let sigmaDeploy = dynamicColor(
+        light: NSColor(calibratedRed: 0.0, green: 0.58, blue: 0.53, alpha: 1),
+        dark: NSColor(calibratedRed: 0.28, green: 0.82, blue: 0.75, alpha: 1)
+    )
+
     static let radiusSmall: CGFloat = 6
     static let radiusMedium: CGFloat = 8
     static let radiusLarge: CGFloat = 10
     static let radiusCard: CGFloat = 12
     static let radiusWindow: CGFloat = 13
     static let radiusModal: CGFloat = 16
+}
+
+extension DeployEnvironment {
+    /// Badge tint for the "currently deployed" indicator on a build row.
+    var badgeColor: Color {
+        switch self {
+        case .devnet: return AppChrome.deploy
+        case .sigma: return AppChrome.sigmaDeploy
+        }
+    }
+
+    /// SF Symbol for the badge, so environments are distinguishable by shape and not
+    /// color alone.
+    var badgeIcon: String {
+        switch self {
+        case .devnet: return "hexagon.fill"
+        case .sigma: return "diamond.fill"
+        }
+    }
 }
 
 /// Column widths shared by CircleCI and Vercel rows so the leading status glyph

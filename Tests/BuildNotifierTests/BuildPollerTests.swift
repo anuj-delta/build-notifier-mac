@@ -11,8 +11,8 @@ final class BuildPollerTests: XCTestCase {
             makeBuild(
                 buildNum: 530,
                 branch: "main",
-                committerName: "Anuj Sharma",
-                committerEmail: "anuj.sharma@delta.exchange",
+                committerName: "Test Author",
+                committerEmail: "author@example.test",
                 workflowId: "wf-existing"
             )
         ]
@@ -39,8 +39,8 @@ final class BuildPollerTests: XCTestCase {
             makeBuild(
                 buildNum: 531,
                 branch: "feature",
-                committerName: "Anuj Sharma",
-                committerEmail: "anuj.sharma@delta.exchange",
+                committerName: "Test Author",
+                committerEmail: "author@example.test",
                 workflowId: "wf-new"
             ),
             at: 0
@@ -59,8 +59,8 @@ final class BuildPollerTests: XCTestCase {
             makeBuild(
                 buildNum: 530,
                 branch: "main",
-                committerName: "Anuj Sharma",
-                committerEmail: "anuj.sharma@delta.exchange",
+                committerName: "Test Author",
+                committerEmail: "author@example.test",
                 workflowId: "wf-existing"
             )
         ]
@@ -87,8 +87,8 @@ final class BuildPollerTests: XCTestCase {
             makeBuild(
                 buildNum: 531,
                 branch: "feature",
-                committerName: "Anuj Sharma",
-                committerEmail: "anuj.sharma@delta.exchange",
+                committerName: "Test Author",
+                committerEmail: "author@example.test",
                 workflowId: "wf-new"
             ),
             at: 0
@@ -105,8 +105,8 @@ final class BuildPollerTests: XCTestCase {
             makeBuild(
                 buildNum: 540,
                 branch: "main",
-                committerName: "Anuj Sharma",
-                committerEmail: "anuj.sharma@delta.exchange",
+                committerName: "Test Author",
+                committerEmail: "author@example.test",
                 workflowId: "wf-running",
                 status: "running"
             )
@@ -131,8 +131,8 @@ final class BuildPollerTests: XCTestCase {
             makeBuild(
                 buildNum: 540,
                 branch: "main",
-                committerName: "Anuj Sharma",
-                committerEmail: "anuj.sharma@delta.exchange",
+                committerName: "Test Author",
+                committerEmail: "author@example.test",
                 workflowId: "wf-running",
                 status: "success"
             )
@@ -149,8 +149,8 @@ final class BuildPollerTests: XCTestCase {
             makeBuild(
                 buildNum: 530,
                 branch: "main",
-                committerName: "Anuj Sharma",
-                committerEmail: "anuj.sharma@delta.exchange",
+                committerName: "Test Author",
+                committerEmail: "author@example.test",
                 workflowId: "wf-main"
             )
         ]
@@ -196,8 +196,8 @@ final class BuildPollerTests: XCTestCase {
     func testMineModeIncludesBuildsTriggeredByCurrentUserActor() async throws {
         let builds = [
             makeBuild(buildNum: 530, branch: "main", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-main"),
-            makeBuild(buildNum: 528, branch: "feat/my-work", committerName: "Anuj Sharma", committerEmail: "anuj.sharma@delta.exchange", workflowId: "wf-feature"),
-            makeBuild(buildNum: 527, branch: "feat/teammate-work", committerName: "Teammate", committerEmail: "teammate@delta.exchange", workflowId: "wf-other")
+            makeBuild(buildNum: 528, branch: "feat/my-work", committerName: "Test Author", committerEmail: "author@example.test", workflowId: "wf-feature"),
+            makeBuild(buildNum: 527, branch: "feat/teammate-work", committerName: "Teammate", committerEmail: "teammate@example.test", workflowId: "wf-other")
         ]
 
         let poller = BuildPoller(
@@ -207,7 +207,7 @@ final class BuildPollerTests: XCTestCase {
                 WorkflowDetails(id: workflowId, name: "build-and-deploy", status: "success", pipelineId: "pipeline-\(workflowId)")
             },
             fetchPipeline: { pipelineId in
-                let actorLogin = pipelineId == "pipeline-wf-other" ? "teammate" : "anuj-delta"
+                let actorLogin = pipelineId == "pipeline-wf-other" ? "teammate" : "test-author"
                 return Self.makePipeline(id: pipelineId, actorLogin: actorLogin)
             }
         )
@@ -235,7 +235,7 @@ final class BuildPollerTests: XCTestCase {
             },
             fetchPipeline: { pipelineId in
                 pipelineFetchCount += 1
-                return Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta")
+                return Self.makePipeline(id: pipelineId, actorLogin: "test-author")
             }
         )
         let appState = makeAppState(poller: poller, followMode: .mine)
@@ -253,11 +253,11 @@ final class BuildPollerTests: XCTestCase {
 
     func testMineModeSendsPendingApprovalNotificationForActorMatchedWorkflow() async {
         let firstPollBuilds = [
-            makeBuild(buildNum: 528, branch: "feat/my-work", committerName: "Anuj Sharma", committerEmail: "anuj.sharma@delta.exchange", workflowId: "wf-feature")
+            makeBuild(buildNum: 528, branch: "feat/my-work", committerName: "Test Author", committerEmail: "author@example.test", workflowId: "wf-feature")
         ]
         let secondPollBuilds = [
             makeBuild(buildNum: 530, branch: "main", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-main"),
-            makeBuild(buildNum: 528, branch: "feat/my-work", committerName: "Anuj Sharma", committerEmail: "anuj.sharma@delta.exchange", workflowId: "wf-feature")
+            makeBuild(buildNum: 528, branch: "feat/my-work", committerName: "Test Author", committerEmail: "author@example.test", workflowId: "wf-feature")
         ]
 
         var fetchCount = 0
@@ -289,7 +289,7 @@ final class BuildPollerTests: XCTestCase {
                 WorkflowDetails(id: workflowId, name: "build-and-deploy", status: "on_hold", pipelineId: "pipeline-\(workflowId)")
             },
             fetchPipeline: { pipelineId in
-                let actorLogin = pipelineId == "pipeline-wf-main" ? "anuj-delta" : "someone-else"
+                let actorLogin = pipelineId == "pipeline-wf-main" ? "test-author" : "someone-else"
                 return Self.makePipeline(id: pipelineId, actorLogin: actorLogin)
             },
             sendPendingApprovalNotification: { approval, _ in
@@ -314,8 +314,8 @@ final class BuildPollerTests: XCTestCase {
         let builds = [
             makeBuild(buildNum: 530, branch: "main", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-main"),
             makeBuild(buildNum: 529, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-develop"),
-            makeBuild(buildNum: 528, branch: "feat/my-work", committerName: "Anuj Sharma", committerEmail: "anuj.sharma@delta.exchange", workflowId: "wf-feature"),
-            makeBuild(buildNum: 527, branch: "feat/teammate-work", committerName: "Teammate", committerEmail: "teammate@delta.exchange", workflowId: "wf-other")
+            makeBuild(buildNum: 528, branch: "feat/my-work", committerName: "Test Author", committerEmail: "author@example.test", workflowId: "wf-feature"),
+            makeBuild(buildNum: 527, branch: "feat/teammate-work", committerName: "Teammate", committerEmail: "teammate@example.test", workflowId: "wf-other")
         ]
 
         let poller = BuildPoller(
@@ -341,11 +341,11 @@ final class BuildPollerTests: XCTestCase {
     func testDevnetDeployedBranchIsNewestSuccessfulWorkflow() async {
         let builds = [
             makeBuild(buildNum: 10, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-old", startTime: "2026-03-24T09:00:00Z"),
-            makeBuild(buildNum: 11, branch: "feat/dea-367", committerName: "Anuj Sharma", committerEmail: "anuj.sharma@delta.exchange", workflowId: "wf-new", workflowName: "devnet-manual-deploy", startTime: "2026-03-24T10:00:00Z")
+            makeBuild(buildNum: 11, branch: "feat/dea-367", committerName: "Test Author", committerEmail: "author@example.test", workflowId: "wf-new", workflowName: "devnet-manual-deploy", startTime: "2026-03-24T10:00:00Z")
         ]
         let statuses = ["wf-old": "success", "wf-new": "success"]
         let appState = await runPollResolvingDeploys(builds: builds, statuses: statuses)
-        XCTAssertEqual(appState.devnetDeployedBranch(forSlug: Self.slug), "feat/dea-367")
+        XCTAssertEqual(appState.deployedBranch(forSlug: Self.slug, env: .devnet), "feat/dea-367")
     }
 
     func testCanceledLatestFallsBackToEarlierSuccess() async {
@@ -356,7 +356,7 @@ final class BuildPollerTests: XCTestCase {
         ]
         let statuses = ["wf-old": "success", "wf-new": "canceled"]
         let appState = await runPollResolvingDeploys(builds: builds, statuses: statuses)
-        XCTAssertEqual(appState.devnetDeployedBranch(forSlug: Self.slug), "develop")
+        XCTAssertEqual(appState.deployedBranch(forSlug: Self.slug, env: .devnet), "develop")
     }
 
     func testRunningDeployIsNotReportedAsDeployed() async {
@@ -366,7 +366,7 @@ final class BuildPollerTests: XCTestCase {
         ]
         let statuses = ["wf-run": "running"]
         let appState = await runPollResolvingDeploys(builds: builds, statuses: statuses)
-        XCTAssertNil(appState.devnetDeployedBranch(forSlug: Self.slug))
+        XCTAssertNil(appState.deployedBranch(forSlug: Self.slug, env: .devnet))
     }
 
     func testTerminalWorkflowStatusIsCachedAcrossPolls() async {
@@ -381,14 +381,14 @@ final class BuildPollerTests: XCTestCase {
                 statusFetches[workflowId, default: 0] += 1
                 return WorkflowDetails(id: workflowId, name: "build-and-deploy", status: "success", pipelineId: "pipeline-\(workflowId)")
             },
-            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
         )
         let appState = makeAppState(poller: poller, followMode: .all)
 
         await poller.checkNow()
         await poller.checkNow()
 
-        XCTAssertEqual(appState.devnetDeployedBranch(forSlug: Self.slug), "develop")
+        XCTAssertEqual(appState.deployedBranch(forSlug: Self.slug, env: .devnet), "develop")
         // success is terminal, so the workflow status is fetched once and cached.
         XCTAssertEqual(statusFetches["wf-dep"], 1)
     }
@@ -407,7 +407,7 @@ final class BuildPollerTests: XCTestCase {
             fetchWorkflow: { workflowId in
                 WorkflowDetails(id: workflowId, name: "devnet-manual-deploy", status: "success", pipelineId: "pipeline-\(workflowId)")
             },
-            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
         )
         let appState = makeAppState(poller: poller, followMode: .all)
 
@@ -426,7 +426,7 @@ final class BuildPollerTests: XCTestCase {
             fetchBuilds: { _, _, _, _ in builds },
             fetchWorkflowJobs: { _ in [Self.successJob] },
             fetchWorkflow: { _ in throw TestError.unavailable },
-            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
         )
         let appState = makeAppState(poller: poller, followMode: .all)
 
@@ -451,7 +451,7 @@ final class BuildPollerTests: XCTestCase {
                 statusFetches[workflowId, default: 0] += 1
                 return WorkflowDetails(id: workflowId, name: "build-and-deploy", status: "running", pipelineId: "pipeline-\(workflowId)")
             },
-            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
         )
         let appState = makeAppState(poller: poller, followMode: .all)
 
@@ -477,7 +477,7 @@ final class BuildPollerTests: XCTestCase {
                 }
                 throw TestError.unavailable
             },
-            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
         )
         let appState = makeAppState(poller: poller, followMode: .all)
 
@@ -490,6 +490,157 @@ final class BuildPollerTests: XCTestCase {
         XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-live"], "running")
     }
 
+    // MARK: - Stuck workflow rollup (stopped but non-terminal status)
+
+    func testStoppedWorkflowWithStuckRunningRollupResolvesToSuccessFromJobs() async {
+        // CircleCI's rollup can stay "running" after a rerun-from-failed even though the
+        // workflow stopped and every job is done. The row must not spin forever: with
+        // stopped_at set, the true status is derived from the jobs.
+        let builds = [
+            makeRunningV1Build(branch: "INFRA-782/sigma-chatbot", workflowId: "wf-stuck")
+        ]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "sigma-manual-deploy", status: "running", pipelineId: "pipeline-\(workflowId)", stoppedAt: "2026-07-15T04:42:49Z")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-stuck"], "success")
+    }
+
+    func testStoppedWorkflowWithFailedJobResolvesToFailed() async {
+        let builds = [
+            makeRunningV1Build(branch: "feat/x", workflowId: "wf-stuck")
+        ]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob, Self.failedJob] },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "sigma-manual-deploy", status: "failing", pipelineId: "pipeline-\(workflowId)", stoppedAt: "2026-07-15T04:42:49Z")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-stuck"], "failed")
+    }
+
+    func testRunningWorkflowWithoutStoppedAtStaysRunning() async {
+        // A genuinely in-progress workflow (no stopped_at) must keep spinning, not be
+        // second-guessed by the job list.
+        let builds = [
+            makeRunningV1Build(branch: "feat/x", workflowId: "wf-live")
+        ]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "sigma-manual-deploy", status: "running", pipelineId: "pipeline-\(workflowId)", stoppedAt: nil)
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-live"], "running")
+    }
+
+    // MARK: - Sigma deployed branch
+
+    func testSigmaDeployedBranchResolvesFromSigmaWorkflow() async {
+        let builds = [
+            makeBuild(buildNum: 11, branch: "INFRA-782/sigma-chatbot", committerName: "Colleague", committerEmail: "colleague@example.test", workflowId: "wf-sigma", workflowName: "sigma-manual-deploy", startTime: "2026-07-15T04:41:58Z")
+        ]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "sigma-manual-deploy", status: "success", pipelineId: "pipeline-\(workflowId)")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(appState.deployedBranch(forSlug: Self.slug, env: .sigma), "INFRA-782/sigma-chatbot")
+        // The devnet badge must not fire for a sigma-only deploy.
+        XCTAssertNil(appState.deployedBranch(forSlug: Self.slug, env: .devnet))
+    }
+
+    // MARK: - Deploying (in-flight) state
+
+    func testRunningDeployShowsDeployingNotDeployed() async {
+        let builds = [
+            makeBuild(buildNum: 11, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-run", startTime: "2026-03-24T10:00:00Z")
+        ]
+        let statuses = ["wf-run": "running"]
+        let appState = await runPollResolvingDeploys(builds: builds, statuses: statuses)
+        XCTAssertEqual(appState.deployingBranch(forSlug: Self.slug, env: .devnet), "develop")
+        XCTAssertNil(appState.deployedBranch(forSlug: Self.slug, env: .devnet))
+    }
+
+    func testConcurrentSuccessAndRunningDeployReportBothBranches() async {
+        // develop is live; a newer manual deploy of a feature branch is still running.
+        let builds = [
+            makeBuild(buildNum: 10, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-live", startTime: "2026-03-24T09:00:00Z"),
+            makeBuild(buildNum: 11, branch: "feat/dea-367", committerName: "Test Author", committerEmail: "author@example.test", workflowId: "wf-run", workflowName: "devnet-manual-deploy", startTime: "2026-03-24T10:00:00Z")
+        ]
+        let statuses = ["wf-live": "success", "wf-run": "running"]
+        let appState = await runPollResolvingDeploys(builds: builds, statuses: statuses)
+        XCTAssertEqual(appState.deployedBranch(forSlug: Self.slug, env: .devnet), "develop")
+        XCTAssertEqual(appState.deployingBranch(forSlug: Self.slug, env: .devnet), "feat/dea-367")
+    }
+
+    func testFailedDeployFallsBackToPreviousDeployedBranch() async {
+        // The newest deploy failed; the row keeps showing the last branch that went live and
+        // shows no in-flight state.
+        let builds = [
+            makeBuild(buildNum: 10, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-live", startTime: "2026-03-24T09:00:00Z"),
+            makeBuild(buildNum: 11, branch: "feat/dea-367", committerName: "Test Author", committerEmail: "author@example.test", workflowId: "wf-fail", workflowName: "devnet-manual-deploy", startTime: "2026-03-24T10:00:00Z")
+        ]
+        let statuses = ["wf-live": "success", "wf-fail": "failed"]
+        let appState = await runPollResolvingDeploys(builds: builds, statuses: statuses)
+        XCTAssertEqual(appState.deployedBranch(forSlug: Self.slug, env: .devnet), "develop")
+        XCTAssertNil(appState.deployingBranch(forSlug: Self.slug, env: .devnet))
+    }
+
+    func testDeployingClearsOnceDeploySucceeds() async {
+        // First poll: deploy is running (in-flight, not live). Second poll: it succeeded, so it
+        // becomes live and the in-flight marker clears.
+        let builds = [
+            makeBuild(buildNum: 11, branch: "feat/dea-367", committerName: "Test Author", committerEmail: "author@example.test", workflowId: "wf-x", workflowName: "devnet-manual-deploy", startTime: "2026-03-24T10:00:00Z")
+        ]
+        var status = "running"
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "devnet-manual-deploy", status: status, pipelineId: "pipeline-\(workflowId)")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+        XCTAssertEqual(appState.deployingBranch(forSlug: Self.slug, env: .devnet), "feat/dea-367")
+        XCTAssertNil(appState.deployedBranch(forSlug: Self.slug, env: .devnet))
+
+        status = "success"
+        await poller.checkNow()
+        XCTAssertNil(appState.deployingBranch(forSlug: Self.slug, env: .devnet))
+        XCTAssertEqual(appState.deployedBranch(forSlug: Self.slug, env: .devnet), "feat/dea-367")
+    }
+
     private func runPollResolvingDeploys(builds: [Build], statuses: [String: String]) async -> AppState {
         let poller = BuildPoller(
             fetchBuilds: { _, _, _, _ in builds },
@@ -497,7 +648,7 @@ final class BuildPollerTests: XCTestCase {
             fetchWorkflow: { workflowId in
                 WorkflowDetails(id: workflowId, name: "build-and-deploy", status: statuses[workflowId], pipelineId: "pipeline-\(workflowId)")
             },
-            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "anuj-delta") }
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
         )
         let appState = makeAppState(poller: poller, followMode: .all)
         await poller.checkNow()
@@ -509,10 +660,10 @@ final class BuildPollerTests: XCTestCase {
     private func makeAppState(poller: BuildPoller, followMode: FollowMode) -> AppState {
         let appState = AppState(poller: poller, vercelPoller: VercelPoller(), autoApprovalPoller: AutoApprovalPoller())
         appState.currentUser = User(
-            name: "Anuj Sharma",
-            login: "anuj-delta",
+            name: "Test Author",
+            login: "test-author",
             avatarUrl: nil,
-            selectedEmail: "anuj.sharma@delta.exchange"
+            selectedEmail: "author@example.test"
         )
         appState.preferences.watchedProjects = [
             WatchedProject(
@@ -578,10 +729,10 @@ final class BuildPollerTests: XCTestCase {
             buildNum: 1,
             branch: branch,
             vcsRevision: "rev-1",
-            committerName: "Anuj Sharma",
-            committerEmail: "anuj.sharma@delta.exchange",
-            authorName: "Anuj Sharma",
-            authorEmail: "anuj.sharma@delta.exchange",
+            committerName: "Test Author",
+            committerEmail: "author@example.test",
+            authorName: "Test Author",
+            authorEmail: "author@example.test",
             subject: "Commit 1",
             body: nil,
             why: "github",
@@ -617,6 +768,18 @@ final class BuildPollerTests: XCTestCase {
         name: "build",
         projectSlug: "gh/delta-exchange/api-console",
         status: "running",
+        type: "build",
+        approvedBy: nil,
+        startedAt: nil,
+        stoppedAt: nil,
+        jobNumber: 1
+    )
+
+    private static let failedJob = WorkflowJob(
+        id: "job-failed",
+        name: "build",
+        projectSlug: "gh/delta-exchange/api-console",
+        status: "failed",
         type: "build",
         approvedBy: nil,
         startedAt: nil,
