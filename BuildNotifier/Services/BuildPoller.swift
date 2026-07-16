@@ -324,6 +324,7 @@ final class BuildPoller: ObservableObject {
             }
             appState.deployingBranchBySlugByEnv[env] = bySlug.isEmpty ? nil : bySlug
         }
+        appState.refreshDeploySpinner()
 
         // Resolve the authoritative v2 status for each on-screen row's workflow. v1.1 build
         // status lags v2, so a finished workflow can still report a running job for a short
@@ -681,12 +682,15 @@ final class BuildPoller: ObservableObject {
                         }
                         if wantsConfetti, !suppressRecoveredBaseline, let celebrationKind {
                             let label: String
+                            let secondaryLabel: String?
                             if case .deploy = celebrationKind, let branch {
-                                label = "\(representativeBuild.reponame ?? representativeBuild.projectSlug) · \(branch)"
+                                label = branch
+                                secondaryLabel = representativeBuild.reponame ?? representativeBuild.projectSlug
                             } else {
                                 label = representativeBuild.projectSlug
+                                secondaryLabel = nil
                             }
-                            appState.celebrate(projectLabel: label, kind: celebrationKind)
+                            appState.celebrate(projectLabel: label, secondaryLabel: secondaryLabel, kind: celebrationKind)
                             newCelebratedSuccess.insert(workflowId)
                             // One modal deploy = one celebration: consume the
                             // deployed-branch marker so later workflows on the same

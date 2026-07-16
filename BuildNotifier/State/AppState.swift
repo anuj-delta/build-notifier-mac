@@ -165,7 +165,51 @@ final class AppState {
 
         return false
     }
-    
+
+    /// A deploy to any tracked environment is in flight (its workflow is still
+    /// running/on-hold). Drives the dedicated deploying glyph in the menu bar.
+    var isDeploying: Bool {
+        deployingBranchBySlugByEnv.values.contains { !$0.isEmpty }
+    }
+
+    /// Rotation phase (0..<1) for the animated menu bar spinner. `MenuBarExtra`
+    /// only re-renders its label - and thus redraws the status item - when a
+    /// tracked observable input changes, not on the label's own `@State` or a
+    /// `TimelineView`. So a timer advances this observable phase and the label
+    /// reads it, which is the same path that swaps the idle/spinner/approval icon.
+    var deploySpinnerPhase: Double = 0
+    private var deploySpinnerTimer: Timer?
+    private let deploySpinnerFPS: Double = 20
+    private let deploySpinnerPeriod: Double = 0.9
+
+    /// Whether the animated loader should be spinning: any build/deploy is active
+    /// and the user hasn't turned the loader off.
+    private var wantsSpinnerAnimation: Bool {
+        preferences.showDeployLoader && hasActiveBuildActivity
+    }
+
+    /// Start or stop the spinner timer to match `wantsSpinnerAnimation`. Called by
+    /// the poller after it refreshes build state, and when the preference changes.
+    func refreshDeploySpinner() {
+        if wantsSpinnerAnimation {
+            guard deploySpinnerTimer == nil else { return }
+            let step = (1.0 / deploySpinnerFPS) / deploySpinnerPeriod
+            let timer = Timer(timeInterval: 1.0 / deploySpinnerFPS, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.deploySpinnerPhase = (self.deploySpinnerPhase + step)
+                        .truncatingRemainder(dividingBy: 1)
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            deploySpinnerTimer = timer
+        } else {
+            deploySpinnerTimer?.invalidate()
+            deploySpinnerTimer = nil
+            deploySpinnerPhase = 0
+        }
+    }
+
     static let maxBranchesPerProject = 5
 
     var groupedBuilds: [(project: WatchedProject, builds: [String: [Build]])] {
@@ -316,7 +360,7 @@ final class AppState {
             isLoading = false
             return true
         } catch {
-            self.error = error.localizedDescription
+            reportError(error)
             await CircleCIAPI.shared.clearToken()
             isLoading = false
             return false
@@ -331,7 +375,7 @@ final class AppState {
             projects = try await CircleCIAPI.shared.getProjects()
             isLoading = false
         } catch {
-            self.error = error.localizedDescription
+            reportError(error)
             isLoading = false
         }
     }
@@ -419,9 +463,9 @@ final class AppState {
     /// Fire confetti + success sound unconditionally. Callers decide whether the
     /// branch/pref combination warrants a celebration and pass the kind so the
     /// banner reads correctly (production vs devnet).
-    func celebrate(projectLabel: String, kind: CelebrationKind) {
+    func celebrate(projectLabel: String, secondaryLabel: String? = nil, kind: CelebrationKind) {
         AudioPlayer.shared.play(CelebrationSound(rawValue: preferences.successSound) ?? .defaultSuccess)
-        ConfettiPresenter.shared.present(projectLabel: projectLabel, kind: kind)
+        ConfettiPresenter.shared.present(projectLabel: projectLabel, secondaryLabel: secondaryLabel, kind: kind)
     }
 
     func celebrateProdSuccess(projectLabel: String) {
@@ -447,7 +491,7 @@ final class AppState {
             // Refresh after retry
             poller.poll()
         } catch {
-            self.error = error.localizedDescription
+            reportError(error)
         }
     }
     
@@ -464,7 +508,7 @@ final class AppState {
             // Refresh after cancel
             poller.poll()
         } catch {
-            self.error = error.localizedDescription
+            reportError(error)
         }
     }
     
@@ -524,7 +568,7 @@ final class AppState {
             // Refresh after approval
             poller.poll()
         } catch {
-            self.error = error.localizedDescription
+            reportError(error)
         }
     }
 
@@ -598,6 +642,8 @@ final class AppState {
         if poller.isPolling || vercelPoller.isPolling {
             startAllPolling()
         }
+        // React immediately when the deploy-loader toggle changes.
+        refreshDeploySpinner()
     }
     
     // MARK: - Vercel Actions
@@ -614,7 +660,7 @@ final class AppState {
             isLoading = false
             return true
         } catch {
-            self.error = error.localizedDescription
+            reportError(error)
             await VercelAPI.shared.clearToken()
             isLoading = false
             return false
@@ -629,7 +675,7 @@ final class AppState {
             vercelTeams = try await VercelAPI.shared.getTeams()
             isLoading = false
         } catch {
-            self.error = error.localizedDescription
+            reportError(error)
             isLoading = false
         }
     }
@@ -642,7 +688,7 @@ final class AppState {
             vercelProjects = try await VercelAPI.shared.getProjects(teamId: teamId)
             isLoading = false
         } catch {
-            self.error = error.localizedDescription
+            reportError(error)
             isLoading = false
         }
     }
@@ -697,6 +743,21 @@ final class AppState {
         }
     }
     
+    /// True for benign task / URL cancellations - e.g. the menu bar popover
+    /// closing while a request is in flight. These are not real failures.
+    private func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        let ns = error as NSError
+        return ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled
+    }
+
+    /// Set the user-facing error, ignoring benign cancellations so a superseded
+    /// or interrupted request never flashes a "cancelled" banner.
+    func reportError(_ error: Error) {
+        guard !isCancellation(error) else { return }
+        self.error = error.localizedDescription
+    }
+
     private func validateAndLoadData() async {
         isLoading = true
         error = nil
@@ -714,9 +775,8 @@ final class AppState {
                 startAllPolling()
             }
         } catch {
-            self.error = error.localizedDescription
-            
-            // Only wipe credentials when token is actually invalid.
+            // Only wipe credentials when the token is actually invalid. Onboarding
+            // explains the reauth, so no banner here.
             if let circleError = error as? CircleCIError, case .unauthorized = circleError {
                 try? KeychainService.shared.deleteToken()
                 await CircleCIAPI.shared.clearToken()
@@ -724,16 +784,20 @@ final class AppState {
                 isLoading = false
                 return
             }
-            
-            // Transient error (RBAC/403, offline, rate limits, etc). Keep token.
+
+            // Transient error (offline, RBAC/403, rate limits, a cancelled request).
+            // If projects are already set up, recover silently and let the poller keep
+            // retrying every interval - no banner. Only first-run setup, which has no
+            // data to fall back on, surfaces the error so the user knows to retry.
             if preferences.watchedProjects.isEmpty && preferences.watchedVercelProjects.isEmpty {
+                reportError(error)
                 currentScreen = .onboarding
             } else {
                 currentScreen = .main
                 startAllPolling()
             }
         }
-        
+
         isLoading = false
     }
     

@@ -208,6 +208,46 @@ struct SettingsView: View {
             }
 
             SettingsSection(
+                title: "Menu Bar",
+                subtitle: "The spinning icon shown while a branch is deploying.",
+                systemImage: "menubar.rectangle"
+            ) {
+                SettingsToggleRow(
+                    title: "Show deploy loader",
+                    isOn: Binding(
+                        get: { appState.preferences.showDeployLoader },
+                        set: {
+                            appState.preferences.showDeployLoader = $0
+                            appState.savePreferences()
+                        }
+                    )
+                )
+
+                Divider()
+
+                SettingsPickerRow(title: "Loader style") {
+                    HStack(spacing: 10) {
+                        DeployLoaderPreview(style: appState.preferences.deployLoaderStyle)
+
+                        Picker("", selection: Binding(
+                            get: { appState.preferences.deployLoaderStyle },
+                            set: {
+                                appState.preferences.deployLoaderStyle = $0
+                                appState.savePreferences()
+                            }
+                        )) {
+                            ForEach(MenuBarDeployStyle.allCases, id: \.self) { style in
+                                Text(style.label).tag(style)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 150)
+                    }
+                }
+                .disabled(!appState.preferences.showDeployLoader)
+            }
+
+            SettingsSection(
                 title: "Overview",
                 subtitle: "Current integration and watch state.",
                 systemImage: "rectangle.3.group"
@@ -1036,6 +1076,28 @@ private struct SettingsToggleRow<Trailing: View>: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+}
+
+/// Live, animated preview of a deploy-loader style on a mini menu-bar chip. Uses
+/// `TimelineView`, which animates fine in a normal window (only the status bar
+/// ignores it), reusing the exact `NSImage` rendering the menu bar uses.
+private struct DeployLoaderPreview: View {
+    let style: MenuBarDeployStyle
+    private let period: Double = 0.9
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate
+                .truncatingRemainder(dividingBy: period) / period
+            MenuBarDeployingGlyph(style: style, phase: phase)
+                .foregroundStyle(.white)
+        }
+        .frame(width: 30, height: 22)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color(red: 0.10, green: 0.12, blue: 0.24))
+        )
     }
 }
 

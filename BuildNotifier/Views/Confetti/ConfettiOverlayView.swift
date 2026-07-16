@@ -15,18 +15,43 @@ enum CelebrationKind: Equatable {
     }
 }
 
+/// One thing being celebrated. `title` is the headline subject (branch for a
+/// deploy, project slug for production); `subtitle` is the supporting line (the
+/// repo for a deploy), shown muted below the titles.
+struct CelebrationSubject: Equatable {
+    let title: String
+    let subtitle: String?
+}
+
 @MainActor
 @Observable
 final class ConfettiOverlayModel {
-    var projectLabels: [String] = []
+    var subjects: [CelebrationSubject] = []
     var isDismissing = false
     var headline: String = CelebrationKind.production.headline
     private var resolvedKind: CelebrationKind?
 
-    func addProject(_ label: String) {
-        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !projectLabels.contains(trimmed) else { return }
-        projectLabels.append(trimmed)
+    /// Titles across all coalesced bursts, joined for the primary line.
+    var titleLine: String {
+        subjects.map(\.title).joined(separator: ", ")
+    }
+
+    /// Distinct subtitles (repos) across all coalesced bursts, joined for the
+    /// supporting line. Empty when nothing carried a subtitle.
+    var subtitleLine: String {
+        var seen: Set<String> = []
+        let ordered = subjects.compactMap(\.subtitle).filter { seen.insert($0).inserted }
+        return ordered.joined(separator: ", ")
+    }
+
+    func addSubject(title: String, subtitle: String? = nil) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+        let trimmedSubtitle = subtitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedSubtitle = (trimmedSubtitle?.isEmpty ?? true) ? nil : trimmedSubtitle
+        let subject = CelebrationSubject(title: trimmedTitle, subtitle: resolvedSubtitle)
+        guard !subjects.contains(subject) else { return }
+        subjects.append(subject)
     }
 
     /// Sets the banner headline for this burst. When bursts coalesce into one
@@ -40,7 +65,7 @@ final class ConfettiOverlayModel {
     }
 
     func reset() {
-        projectLabels = []
+        subjects = []
         isDismissing = false
         resolvedKind = nil
         headline = CelebrationKind.production.headline
@@ -115,26 +140,38 @@ struct ConfettiOverlayView: View {
     }
 
     private var banner: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 44, weight: .semibold))
                 .foregroundStyle(AppChrome.success)
 
-            Text(model.headline)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(AppChrome.textMuted)
+            VStack(spacing: 7) {
+                Text(model.headline.uppercased())
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(AppChrome.textSecondary)
 
-            Text(model.projectLabels.joined(separator: ", "))
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(AppChrome.text)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
+                Text(model.titleLine)
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(AppChrome.text)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.6)
+
+                if !model.subtitleLine.isEmpty {
+                    Text(model.subtitleLine)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppChrome.textMuted)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                }
+            }
         }
         .padding(.horizontal, 36)
         .padding(.vertical, 28)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.regularMaterial)
+                .fill(.thickMaterial)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)

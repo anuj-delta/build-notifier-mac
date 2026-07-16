@@ -87,6 +87,10 @@ struct UserPreferences: Codable {
     var failureSound: String
     var productionBranches: [String]
 
+    // Menu bar deploy indicator
+    var showDeployLoader: Bool
+    var deployLoaderStyle: MenuBarDeployStyle
+
     static let `default` = UserPreferences(
         pollingIntervalSeconds: 60,
         launchAtLogin: false,
@@ -107,7 +111,9 @@ struct UserPreferences: Codable {
         successSound: CelebrationSound.defaultSuccess.rawValue,
         playFailureSound: true,
         failureSound: CelebrationSound.defaultFailure.rawValue,
-        productionBranches: ["main", "master"]
+        productionBranches: ["main", "master"],
+        showDeployLoader: true,
+        deployLoaderStyle: .dashes
     )
     
     // MARK: - Persistence
@@ -147,6 +153,9 @@ struct UserPreferences: Codable {
                 if let v = partial["playFailureSound"] as? Bool { prefs.playFailureSound = v }
                 if let v = partial["failureSound"] as? String { prefs.failureSound = v }
                 if let v = partial["productionBranches"] as? [String] { prefs.productionBranches = v }
+                if let v = partial["showDeployLoader"] as? Bool { prefs.showDeployLoader = v }
+                if let v = partial["deployLoaderStyle"] as? String,
+                   let style = MenuBarDeployStyle(rawValue: v) { prefs.deployLoaderStyle = style }
                 if let vercelData = try? JSONSerialization.data(withJSONObject: partial["watchedVercelProjects"] ?? []),
                    let vercelWatched = try? JSONDecoder().decode([WatchedVercelProject].self, from: vercelData) {
                     prefs.watchedVercelProjects = vercelWatched
