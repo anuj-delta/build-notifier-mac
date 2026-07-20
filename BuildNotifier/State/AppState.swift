@@ -172,10 +172,10 @@ final class AppState {
     private let deploySpinnerFPS: Double = 20
     private let deploySpinnerPeriod: Double = 0.9
 
-    /// Whether the animated loader should be spinning: any build/deploy is active
-    /// and the user hasn't turned the loader off.
+    /// Whether the animated loader should be spinning: any build or deploy is
+    /// in flight. The building/running menu bar icon is always animated.
     private var wantsSpinnerAnimation: Bool {
-        preferences.showDeployLoader && statusCounts.running > 0
+        statusCounts.running > 0
     }
 
     /// Start or stop the spinner timer to match `wantsSpinnerAnimation`. Called by

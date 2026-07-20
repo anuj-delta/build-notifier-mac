@@ -14,10 +14,7 @@ enum MenuBarGlyph {
     static func image(status: OverallStatus, appState: AppState) -> NSImage {
         switch status {
         case .running:
-            if appState.preferences.showDeployLoader {
-                return deploying(style: appState.preferences.deployLoaderStyle, phase: appState.deploySpinnerPhase)
-            }
-            return symbol("arrow.triangle.2.circlepath")
+            return deploying(style: appState.preferences.deployLoaderStyle, phase: appState.deploySpinnerPhase)
         case .failing:
             return coloredSymbol(status.menuBarIcon, color: .systemRed)
         case .pendingApproval:
