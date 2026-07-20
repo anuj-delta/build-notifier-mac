@@ -89,11 +89,15 @@ final class MenuBarItem: NSObject {
     /// is one-shot, so it re-arms itself after each change.
     private func renderGlyph() {
         withObservationTracking {
-            let title = MenuBarGlyph.title(for: appState) ?? ""
-            item.button?.image = MenuBarGlyph.image(for: appState)
+            let counts = appState.statusCounts
+            let status = counts.overallStatus(pendingApprovals: appState.pendingApprovals.count)
+            let title = MenuBarGlyph.title(status: status, counts: counts, pendingApprovals: appState.pendingApprovals.count) ?? ""
+            item.button?.image = MenuBarGlyph.image(status: status, appState: appState)
             item.button?.title = title
             item.button?.imagePosition = title.isEmpty ? .imageOnly : .imageLeft
-            item.button?.setAccessibilityLabel(MenuBarGlyph.accessibilityLabel(for: appState))
+            item.button?.setAccessibilityLabel(
+                MenuBarGlyph.accessibilityLabel(status: status, counts: counts, pendingApprovals: appState.pendingApprovals.count)
+            )
         } onChange: { [weak self] in
             Task { @MainActor in self?.renderGlyph() }
         }

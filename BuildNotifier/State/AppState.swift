@@ -15,6 +15,17 @@ struct StatusCounts {
     var running = 0
     var failing = 0
     var passing = 0
+
+    /// Priority order for the menu bar: pending approval > failing > running >
+    /// passing > unknown. Callers pass the pending-approval count separately
+    /// since it isn't part of the build/deploy tally.
+    func overallStatus(pendingApprovals: Int) -> OverallStatus {
+        if pendingApprovals > 0 { return .pendingApproval }
+        if failing > 0 { return .failing }
+        if running > 0 { return .running }
+        if passing > 0 { return .passing }
+        return .unknown
+    }
 }
 
 @MainActor
@@ -148,12 +159,7 @@ final class AppState {
     }
 
     var overallStatus: OverallStatus {
-        if !pendingApprovals.isEmpty { return .pendingApproval }
-        let counts = statusCounts
-        if counts.failing > 0 { return .failing }
-        if counts.running > 0 { return .running }
-        if counts.passing > 0 { return .passing }
-        return .unknown
+        statusCounts.overallStatus(pendingApprovals: pendingApprovals.count)
     }
 
     /// A deploy to any tracked environment is in flight (its workflow is still
@@ -172,10 +178,12 @@ final class AppState {
     private let deploySpinnerFPS: Double = 20
     private let deploySpinnerPeriod: Double = 0.9
 
-    /// Whether the animated loader should be spinning: any build or deploy is
-    /// in flight. The building/running menu bar icon is always animated.
+    /// Whether the animated loader should be spinning. Gated on the same
+    /// condition that renders the animated glyph (`overallStatus == .running`)
+    /// so the timer never runs while a static icon is shown - e.g. when builds
+    /// are running but a failure takes priority in the menu bar.
     private var wantsSpinnerAnimation: Bool {
-        statusCounts.running > 0
+        overallStatus == .running
     }
 
     /// Start or stop the spinner timer to match `wantsSpinnerAnimation`. Called by
