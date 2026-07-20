@@ -10,6 +10,13 @@ enum AppScreen {
     case main
 }
 
+/// Aggregate build/deployment tallies across all watched projects.
+struct StatusCounts {
+    var running = 0
+    var failing = 0
+    var passing = 0
+}
+
 @MainActor
 @Observable
 final class AppState {
@@ -105,18 +112,14 @@ final class AppState {
         hasCircleCIToken || hasVercelToken
     }
     
-    var overallStatus: OverallStatus {
-        // Check for pending approvals first
-        if !pendingApprovals.isEmpty {
-            return .pendingApproval
-        }
-        
-        // Check builds - look at the LATEST build per branch per project
-        var hasRunning = false
-        var hasFailure = false
-        var hasSuccess = false
-        
-        // CircleCI builds
+    /// Single pass over watched builds/deployments producing the counts the menu
+    /// bar needs. Uses the latest build per branch per project (and the latest
+    /// deployment per project) as the counted unit — the same unit overallStatus
+    /// reasons about. A build's status is one value, so the buckets are mutually
+    /// exclusive per unit.
+    var statusCounts: StatusCounts {
+        var counts = StatusCounts()
+
         for (_, builds) in buildsByProject {
             var branchLatest: [String: Build] = [:]
             for build in builds {
@@ -125,45 +128,32 @@ final class AppState {
                     branchLatest[branch] = build
                 }
             }
-            
+
             for (_, build) in branchLatest {
                 let status = build.buildStatus
-                if status.isRunning { hasRunning = true }
-                if status.isFailure { hasFailure = true }
-                if status.isSuccess { hasSuccess = true }
+                if status.isFailure { counts.failing += 1 }
+                else if status.isRunning { counts.running += 1 }
+                else if status.isSuccess { counts.passing += 1 }
             }
         }
-        
-        // Vercel deployments
+
         for (_, deployments) in deploymentsByProject {
-            if let latest = deployments.first {
-                let status = latest.deploymentStatus
-                if status.isRunning { hasRunning = true }
-                if status.isFailure { hasFailure = true }
-                if status.isSuccess { hasSuccess = true }
-            }
+            guard let status = deployments.first?.deploymentStatus else { continue }
+            if status.isFailure { counts.failing += 1 }
+            else if status.isRunning { counts.running += 1 }
+            else if status.isSuccess { counts.passing += 1 }
         }
-        
-        if hasFailure { return .failing }
-        if hasRunning { return .running }
-        if hasSuccess { return .passing }
-        return .unknown
+
+        return counts
     }
 
-    var hasActiveBuildActivity: Bool {
-        for (_, builds) in buildsByProject {
-            if builds.contains(where: { $0.buildStatus.isRunning }) {
-                return true
-            }
-        }
-
-        for (_, deployments) in deploymentsByProject {
-            if deployments.contains(where: { $0.deploymentStatus.isRunning }) {
-                return true
-            }
-        }
-
-        return false
+    var overallStatus: OverallStatus {
+        if !pendingApprovals.isEmpty { return .pendingApproval }
+        let counts = statusCounts
+        if counts.failing > 0 { return .failing }
+        if counts.running > 0 { return .running }
+        if counts.passing > 0 { return .passing }
+        return .unknown
     }
 
     /// A deploy to any tracked environment is in flight (its workflow is still
@@ -185,7 +175,7 @@ final class AppState {
     /// Whether the animated loader should be spinning: any build/deploy is active
     /// and the user hasn't turned the loader off.
     private var wantsSpinnerAnimation: Bool {
-        preferences.showDeployLoader && hasActiveBuildActivity
+        preferences.showDeployLoader && statusCounts.running > 0
     }
 
     /// Start or stop the spinner timer to match `wantsSpinnerAnimation`. Called by
@@ -918,10 +908,21 @@ enum OverallStatus {
     var menuBarIcon: String {
         switch self {
         case .passing: return "checkmark.circle.fill"
-        case .failing: return "exclamationmark.circle.fill"
-        case .running: return "arrow.triangle.2.circlepath.circle.fill"
+        case .failing: return "xmark.circle.fill"
+        case .running: return "arrow.triangle.2.circlepath.circle.fill" // unused: the label draws an animated spinner
         case .pendingApproval: return "pause.circle.fill"
         case .unknown: return "circle.dashed"
+        }
+    }
+
+    /// Hybrid menu-bar tint: color only for attention states, nil for calm
+    /// states so they render monochrome/template and adapt to the menu bar.
+    /// Colors match the glyphs used by build rows (RowStatus).
+    var menuBarTint: Color? {
+        switch self {
+        case .failing: return AppChrome.danger
+        case .pendingApproval: return AppChrome.warning
+        case .passing, .running, .unknown: return nil
         }
     }
 }
