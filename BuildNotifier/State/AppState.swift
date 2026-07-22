@@ -382,7 +382,14 @@ final class AppState {
 
     // MARK: - Actions
 
+    private var hasInitialized = false
+
     func initialize() async {
+        // Runs once at launch (from the app delegate) - guard against the popover's
+        // fallback `.task` also firing it if the window opens before launch finishes.
+        guard !hasInitialized else { return }
+        hasInitialized = true
+
         workflowApprovalSupport.removeAll()
         armedAutoApprovals.removeAll()
         await NotificationManager.shared.requestAuthorization()
