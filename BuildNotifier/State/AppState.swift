@@ -213,7 +213,8 @@ final class AppState {
     /// reads it, which is the same path that swaps the idle/spinner/approval icon.
     var deploySpinnerPhase: Double = 0
     private var deploySpinnerTimer: Timer?
-    private let deploySpinnerFPS: Double = 20
+    private var deploySpinnerStart: TimeInterval = 0
+    private let deploySpinnerFPS: Double = 60
     private let deploySpinnerPeriod: Double = 0.9
 
     /// Whether the animated loader should be spinning. Gated on the same
@@ -229,14 +230,20 @@ final class AppState {
     func refreshDeploySpinner() {
         if wantsSpinnerAnimation {
             guard deploySpinnerTimer == nil else { return }
-            let step = (1.0 / deploySpinnerFPS) / deploySpinnerPeriod
+            // Derive the phase from elapsed monotonic time rather than accumulating
+            // a fixed step per tick, so a late or dropped frame snaps to the right
+            // angle instead of slowing the spin - the rotation stays at a constant
+            // velocity and reads smoothly even if the timer jitters.
+            deploySpinnerStart = ProcessInfo.processInfo.systemUptime
             let timer = Timer(timeInterval: 1.0 / deploySpinnerFPS, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
-                    self.deploySpinnerPhase = (self.deploySpinnerPhase + step)
+                    let elapsed = ProcessInfo.processInfo.systemUptime - self.deploySpinnerStart
+                    self.deploySpinnerPhase = (elapsed / self.deploySpinnerPeriod)
                         .truncatingRemainder(dividingBy: 1)
                 }
             }
+            timer.tolerance = 0
             RunLoop.main.add(timer, forMode: .common)
             deploySpinnerTimer = timer
         } else {
