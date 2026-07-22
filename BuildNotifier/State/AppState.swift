@@ -701,9 +701,13 @@ final class AppState {
         preferences.watchedProjects = []
         preferences.save()
         regroupBuilds()
+        // Recompute from the now-cleared data so the menu bar doesn't keep showing
+        // the pre-sign-out status (and stops the spinner timer). Polling has ended,
+        // so no future poll would otherwise refresh the cache.
+        refreshDeploySpinner()
         currentScreen = .onboarding
     }
-    
+
     func changeToken() {
         // Preserve watchlist but clear token and go to onboarding
         stopPolling()
@@ -719,6 +723,7 @@ final class AppState {
         armedAutoApprovals = [:]
         // Note: watchedProjects is preserved
         regroupBuilds()
+        refreshDeploySpinner()
         currentScreen = .onboarding
     }
     
@@ -839,6 +844,9 @@ final class AppState {
         preferences.watchedVercelProjects = []
         preferences.selectedVercelTeamId = nil
         preferences.save()
+        // CircleCI may still be connected; recompute from remaining data so the
+        // badge drops the disconnected Vercel deploys instead of showing them stale.
+        refreshDeploySpinner()
     }
     
     // MARK: - Private

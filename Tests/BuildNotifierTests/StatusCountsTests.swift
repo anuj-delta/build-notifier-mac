@@ -168,6 +168,23 @@ final class StatusCountsTests: XCTestCase {
         XCTAssertEqual(appState.overallStatus, .pendingApproval)
     }
 
+    func testRefreshResetsCachedStatusWhenDataIsCleared() {
+        let appState = makeAppState()
+        appState.buildsByProject = [
+            "delta-exchange/api-console": [makeBuild(buildNum: 60, branch: "main", status: "failed")]
+        ]
+        appState.refreshDeploySpinner()
+        XCTAssertEqual(appState.menuBarStatus, .failing)
+        XCTAssertEqual(appState.menuBarCounts.failing, 1)
+
+        // Clearing data and refreshing - as sign-out/disconnect does - must reset
+        // the cached snapshot rather than leave the menu bar frozen on old state.
+        appState.buildsByProject = [:]
+        appState.refreshDeploySpinner()
+        XCTAssertEqual(appState.menuBarStatus, .unknown)
+        XCTAssertEqual(appState.menuBarCounts.failing, 0)
+    }
+
     // MARK: - Fixtures
 
     private func iso(_ date: Date) -> String { ISO8601DateFormatter().string(from: date) }
