@@ -89,8 +89,8 @@ final class MenuBarItem: NSObject {
     /// is one-shot, so it re-arms itself after each change.
     private func renderGlyph() {
         withObservationTracking {
-            let counts = appState.statusCounts
-            let status = counts.overallStatus(pendingApprovals: appState.pendingApprovals.count)
+            let counts = appState.menuBarCounts
+            let status = appState.menuBarStatus
             let title = MenuBarGlyph.title(status: status, counts: counts, pendingApprovals: appState.pendingApprovals.count) ?? ""
             item.button?.image = MenuBarGlyph.image(status: status, appState: appState)
             item.button?.title = title

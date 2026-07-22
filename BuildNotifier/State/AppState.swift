@@ -153,10 +153,15 @@ final class AppState {
                 }
             }
 
+            // Parse each branch's activity date once - it's reused by both the
+            // recency-ranked sort and the staleness check below, and parsing isn't
+            // free on the per-redraw hot path.
+            let dateByBranch = branchLatest.compactMapValues { $0.activityDate }
+
             // Visible set: the most-recently-active branches, same as the popover.
             let visible = Set(
                 branchLatest.keys
-                    .sorted { (branchLatest[$0]?.activityDate ?? .distantPast) > (branchLatest[$1]?.activityDate ?? .distantPast) }
+                    .sorted { (dateByBranch[$0] ?? .distantPast) > (dateByBranch[$1] ?? .distantPast) }
                     .prefix(Self.maxBranchesPerProject)
             )
 
@@ -166,7 +171,7 @@ final class AppState {
                 // abandoned feature branches stop pinning the badge to "failing".
                 if !keys.contains(branch) {
                     guard visible.contains(branch) else { continue }
-                    if let date = build.activityDate,
+                    if let date = dateByBranch[branch],
                        now.timeIntervalSince(date) > Self.statusRecencyWindow { continue }
                 }
                 let status = build.buildStatus
@@ -217,18 +222,21 @@ final class AppState {
     private let deploySpinnerFPS: Double = 60
     private let deploySpinnerPeriod: Double = 0.9
 
-    /// Whether the animated loader should be spinning. Gated on the same
-    /// condition that renders the animated glyph (`overallStatus == .running`)
-    /// so the timer never runs while a static icon is shown - e.g. when builds
-    /// are running but a failure takes priority in the menu bar.
-    private var wantsSpinnerAnimation: Bool {
-        overallStatus == .running
-    }
+    /// Menu-bar status snapshot, recomputed once per poll in `refreshDeploySpinner`
+    /// rather than by the label. `overallStatus`/`statusCounts` parse ISO8601 build
+    /// timestamps (~1.5ms per pass), so recomputing them on every 60fps redraw while
+    /// the spinner animates would burn ~9% of a core; the label reads these cached
+    /// values instead and the animation path does no parsing.
+    private(set) var menuBarCounts = StatusCounts()
+    private(set) var menuBarStatus: OverallStatus = .unknown
 
-    /// Start or stop the spinner timer to match `wantsSpinnerAnimation`. Called by
-    /// the poller after it refreshes build state, and when the preference changes.
+    /// Recompute the cached menu-bar status and start/stop the spinner timer to
+    /// match it. Called by each poller right after it updates build/deploy state.
     func refreshDeploySpinner() {
-        if wantsSpinnerAnimation {
+        menuBarCounts = statusCounts
+        menuBarStatus = menuBarCounts.overallStatus(pendingApprovals: pendingApprovals.count)
+
+        if menuBarStatus == .running {
             guard deploySpinnerTimer == nil else { return }
             // Derive the phase from elapsed monotonic time rather than accumulating
             // a fixed step per tick, so a late or dropped frame snaps to the right
