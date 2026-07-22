@@ -16,13 +16,23 @@ struct StatusCounts {
     var failing = 0
     var passing = 0
 
-    /// Priority order for the menu bar: pending approval > failing > running >
-    /// passing > unknown. Callers pass the pending-approval count separately
-    /// since it isn't part of the build/deploy tally.
+    /// Bucket one build/deploy by its terminal-ish state. Failure/running/success
+    /// are mutually exclusive per unit, so at most one bucket increments.
+    mutating func tally(isFailure: Bool, isRunning: Bool, isSuccess: Bool) {
+        if isFailure { failing += 1 }
+        else if isRunning { running += 1 }
+        else if isSuccess { passing += 1 }
+    }
+
+    /// Priority order for the menu bar: pending approval > running > failing >
+    /// passing > unknown. Running outranks failing so an active build shows the
+    /// animated "building" icon rather than being masked by a stale failure.
+    /// Callers pass the pending-approval count separately since it isn't part of
+    /// the build/deploy tally.
     func overallStatus(pendingApprovals: Int) -> OverallStatus {
         if pendingApprovals > 0 { return .pendingApproval }
-        if failing > 0 { return .failing }
         if running > 0 { return .running }
+        if failing > 0 { return .failing }
         if passing > 0 { return .passing }
         return .unknown
     }
@@ -130,32 +140,60 @@ final class AppState {
     /// exclusive per unit.
     var statusCounts: StatusCounts {
         var counts = StatusCounts()
+        let keys = keyBranches
+        let now = Date()
 
         for (_, builds) in buildsByProject {
+            // Latest build per branch (build numbers are monotonic within a branch).
             var branchLatest: [String: Build] = [:]
             for build in builds {
                 let branch = build.branch ?? "unknown"
-                if branchLatest[branch] == nil || build.buildNum > (branchLatest[branch]?.buildNum ?? 0) {
+                if branchLatest[branch].map({ build.buildNum > $0.buildNum }) ?? true {
                     branchLatest[branch] = build
                 }
             }
 
-            for (_, build) in branchLatest {
+            // Visible set: the most-recently-active branches, same as the popover.
+            let visible = Set(
+                branchLatest.keys
+                    .sorted { (branchLatest[$0]?.activityDate ?? .distantPast) > (branchLatest[$1]?.activityDate ?? .distantPast) }
+                    .prefix(Self.maxBranchesPerProject)
+            )
+
+            for (branch, build) in branchLatest {
+                // A key branch (main/develop/production) always counts. Any other
+                // branch counts only while it's both visible and not stale, so
+                // abandoned feature branches stop pinning the badge to "failing".
+                if !keys.contains(branch) {
+                    guard visible.contains(branch) else { continue }
+                    if let date = build.activityDate,
+                       now.timeIntervalSince(date) > Self.statusRecencyWindow { continue }
+                }
                 let status = build.buildStatus
-                if status.isFailure { counts.failing += 1 }
-                else if status.isRunning { counts.running += 1 }
-                else if status.isSuccess { counts.passing += 1 }
+                counts.tally(isFailure: status.isFailure, isRunning: status.isRunning, isSuccess: status.isSuccess)
             }
         }
 
         for (_, deployments) in deploymentsByProject {
-            guard let status = deployments.first?.deploymentStatus else { continue }
-            if status.isFailure { counts.failing += 1 }
-            else if status.isRunning { counts.running += 1 }
-            else if status.isSuccess { counts.passing += 1 }
+            guard let deploy = deployments.first else { continue }
+            // Production deploys always count; previews only while recent.
+            if !deploy.isProduction,
+               now.timeIntervalSince(deploy.createdDate) > Self.statusRecencyWindow { continue }
+            let status = deploy.deploymentStatus
+            counts.tally(isFailure: status.isFailure, isRunning: status.isRunning, isSuccess: status.isSuccess)
         }
 
         return counts
+    }
+
+    /// Non-key branches older than this stop counting toward the menu bar status,
+    /// so an abandoned branch whose last build failed doesn't pin the badge.
+    private static let statusRecencyWindow: TimeInterval = 7 * 24 * 60 * 60
+
+    /// Branches that always count toward the menu bar status, even when stale or
+    /// crowded out of the visible list - the ones you always want to know about.
+    private var keyBranches: Set<String> {
+        Set(preferences.productionBranches + ["develop"])
     }
 
     var overallStatus: OverallStatus {

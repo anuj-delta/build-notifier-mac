@@ -11,7 +11,7 @@ final class StatusCountsTests: XCTestCase {
         XCTAssertEqual(appState.overallStatus, .unknown)
     }
 
-    func testCountsSumBranchesAndFailingWinsOverRunning() {
+    func testCountsSumBranchesAndRunningWinsOverFailing() {
         let appState = makeAppState()
         appState.buildsByProject = [
             "delta-exchange/api-console": [
@@ -22,7 +22,7 @@ final class StatusCountsTests: XCTestCase {
 
         XCTAssertEqual(appState.statusCounts.failing, 1)
         XCTAssertEqual(appState.statusCounts.running, 1)
-        XCTAssertEqual(appState.overallStatus, .failing, "failing must take precedence over running")
+        XCTAssertEqual(appState.overallStatus, .running, "an active build must outrank a failure")
     }
 
     func testLatestBuildPerBranchWins() {
@@ -78,7 +78,7 @@ final class StatusCountsTests: XCTestCase {
         XCTAssertEqual(appState.statusCounts.running, 1)
         XCTAssertEqual(appState.statusCounts.passing, 1)
         XCTAssertEqual(appState.statusCounts.failing, 1)
-        XCTAssertEqual(appState.overallStatus, .failing, "a failing deploy takes precedence over running/passing")
+        XCTAssertEqual(appState.overallStatus, .running, "a running deploy outranks a failing one")
     }
 
     func testOnlyFirstDeploymentPerProjectCounts() {
@@ -95,6 +95,62 @@ final class StatusCountsTests: XCTestCase {
         XCTAssertEqual(appState.statusCounts.running, 1)
         XCTAssertEqual(appState.statusCounts.passing, 0)
         XCTAssertEqual(appState.overallStatus, .running)
+    }
+
+    func testStaleFeatureFailureExcludedButKeyBranchAlwaysCounts() {
+        let appState = makeAppState()
+        appState.buildsByProject = [
+            "delta-exchange/api-console": [
+                // Abandoned feature branch that failed a month ago: must not count.
+                makeBuild(buildNum: 10, branch: "old-feature", status: "failed", startTime: stale),
+                // main failed just as long ago, but a key branch always counts.
+                makeBuild(buildNum: 11, branch: "main", status: "failed", startTime: stale)
+            ]
+        ]
+
+        XCTAssertEqual(appState.statusCounts.failing, 1, "only the key branch's failure counts")
+        XCTAssertEqual(appState.overallStatus, .failing)
+    }
+
+    func testRecentFeatureBranchCounts() {
+        let appState = makeAppState()
+        appState.buildsByProject = [
+            "delta-exchange/api-console": [
+                makeBuild(buildNum: 20, branch: "feature", status: "running", startTime: recent)
+            ]
+        ]
+
+        XCTAssertEqual(appState.statusCounts.running, 1)
+        XCTAssertEqual(appState.overallStatus, .running)
+    }
+
+    func testFailureBeyondVisibleBranchLimitIsExcluded() {
+        let appState = makeAppState()
+        // Six recent non-key branches; only the five most-recent are visible, so
+        // the sixth (oldest, failed) drops out of the count even though it's fresh.
+        var builds = (0..<5).map { i in
+            makeBuild(buildNum: 100 + i, branch: "feat-\(i)", status: "success",
+                      startTime: iso(Date(timeIntervalSinceNow: -Double(i) * 60)))
+        }
+        builds.append(
+            makeBuild(buildNum: 200, branch: "feat-old", status: "failed",
+                      startTime: iso(Date(timeIntervalSinceNow: -3600)))
+        )
+        appState.buildsByProject = ["delta-exchange/api-console": builds]
+
+        XCTAssertEqual(appState.statusCounts.passing, 5)
+        XCTAssertEqual(appState.statusCounts.failing, 0, "the crowded-out sixth branch must not count")
+        XCTAssertEqual(appState.overallStatus, .passing)
+    }
+
+    func testStalePreviewDeployExcludedButProductionAlwaysCounts() {
+        let appState = makeAppState()
+        appState.deploymentsByProject = [
+            "preview-stale": [makeDeployment(uid: "p1", state: "ERROR", target: "preview", createdAt: 1_600_000_000_000)],
+            "prod": [makeDeployment(uid: "p2", state: "ERROR", target: "production", createdAt: 1_600_000_000_000)]
+        ]
+
+        XCTAssertEqual(appState.statusCounts.failing, 1, "only the production deploy's failure counts")
     }
 
     func testPendingApprovalTakesPrecedenceOverFailing() {
@@ -114,11 +170,17 @@ final class StatusCountsTests: XCTestCase {
 
     // MARK: - Fixtures
 
+    private func iso(_ date: Date) -> String { ISO8601DateFormatter().string(from: date) }
+    /// A month ago - safely outside the 7-day recency window.
+    private var stale: String { iso(Date(timeIntervalSinceNow: -30 * 24 * 60 * 60)) }
+    /// An hour ago - safely inside the recency window.
+    private var recent: String { iso(Date(timeIntervalSinceNow: -60 * 60)) }
+
     private func makeAppState() -> AppState {
         AppState(poller: BuildPoller(), vercelPoller: VercelPoller(), autoApprovalPoller: AutoApprovalPoller())
     }
 
-    private func makeBuild(buildNum: Int, branch: String, status: String) -> Build {
+    private func makeBuild(buildNum: Int, branch: String, status: String, startTime: String? = nil) -> Build {
         Build(
             vcsUrl: "https://github.com/delta-exchange/api-console",
             buildUrl: nil,
@@ -133,7 +195,7 @@ final class StatusCountsTests: XCTestCase {
             body: nil,
             why: nil,
             queuedAt: nil,
-            startTime: nil,
+            startTime: startTime,
             stopTime: nil,
             buildTimeMillis: nil,
             username: "delta-exchange",
@@ -147,19 +209,24 @@ final class StatusCountsTests: XCTestCase {
         )
     }
 
-    private func makeDeployment(uid: String, state: String) -> VercelDeployment {
+    private func makeDeployment(
+        uid: String,
+        state: String,
+        target: String = "production",
+        createdAt: Int = 1_700_000_000_000
+    ) -> VercelDeployment {
         VercelDeployment(
             uid: uid,
             name: "web",
             url: "\(uid).vercel.app",
             state: state,
             readyState: state,
-            createdAt: 1_700_000_000_000,
+            createdAt: createdAt,
             buildingAt: nil,
             ready: nil,
             meta: nil,
             creator: nil,
-            target: "preview"
+            target: target
         )
     }
 
