@@ -236,8 +236,22 @@ final class AppState {
                 return b1 < b2
             }
 
+            // A branch live (or mid-deploy) on any environment must always show, even when it
+            // is older than the top-N by recency - otherwise a long-lived deploy branch (e.g.
+            // the one pinned to sigma) silently drops off the list and its badge never renders.
+            var deployedBranches: Set<String> = []
+            for env in DeployEnvironment.allCases {
+                if let branch = deployedBranchBySlugByEnv[env]?[project.slug] { deployedBranches.insert(branch) }
+                if let branch = deployingBranchBySlugByEnv[env]?[project.slug] { deployedBranches.insert(branch) }
+            }
+
+            var selectedBranches = Array(branchesByRecency.prefix(Self.maxBranchesPerProject))
+            for branch in branchesByRecency where deployedBranches.contains(branch) && !selectedBranches.contains(branch) {
+                selectedBranches.append(branch)
+            }
+
             var sortedBuildsByBranch: [String: [Build]] = [:]
-            for branch in branchesByRecency.prefix(Self.maxBranchesPerProject) {
+            for branch in selectedBranches {
                 if let latestBuild = buildsByBranch[branch]?.max(by: {
                     ($0.activityDate ?? .distantPast) < ($1.activityDate ?? .distantPast)
                 }) {

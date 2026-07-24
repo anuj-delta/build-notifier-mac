@@ -11,14 +11,22 @@ struct WorkflowDetails: Codable {
     /// non-terminal (`running`/`failing`) after a rerun-from-failed even though the
     /// workflow has stopped, so `stoppedAt` is the reliable "it's done" signal.
     let stoppedAt: String?
+    /// e.g. `rerun-workflow-from-failed` / `rerun-workflow-from-start`. Reruns are the
+    /// case where the rollup stays non-terminal AND `stoppedAt` is never set, so `tag`
+    /// is the only signal that a stuck-`running` workflow is actually a finished rerun.
+    let tag: String?
 
-    init(id: String, name: String?, status: String?, pipelineId: String?, stoppedAt: String? = nil) {
+    init(id: String, name: String?, status: String?, pipelineId: String?, stoppedAt: String? = nil, tag: String? = nil) {
         self.id = id
         self.name = name
         self.status = status
         self.pipelineId = pipelineId
         self.stoppedAt = stoppedAt
+        self.tag = tag
     }
+
+    /// A rerun whose rollup can be left stuck non-terminal by CircleCI.
+    var isRerun: Bool { tag?.hasPrefix("rerun") ?? false }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -26,6 +34,7 @@ struct WorkflowDetails: Codable {
         case status
         case pipelineId = "pipeline_id"
         case stoppedAt = "stopped_at"
+        case tag
     }
 }
 

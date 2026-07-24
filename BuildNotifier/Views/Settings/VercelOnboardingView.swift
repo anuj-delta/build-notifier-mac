@@ -113,7 +113,7 @@ struct VercelOnboardingView: View {
             .padding(16)
         }
         .frame(width: 460, height: 560)
-        .background(GlassBackground(material: .underWindowBackground, cornerRadius: 0))
+        .background(AppChrome.window)
     }
 
     private var heroCard: some View {

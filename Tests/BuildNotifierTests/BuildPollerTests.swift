@@ -598,6 +598,94 @@ final class BuildPollerTests: XCTestCase {
         XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-stuck"], "running")
     }
 
+    func testRerunWorkflowWithNullStoppedAtResolvesFromJobs() async {
+        // A rerun-from-failed can leave the rollup stuck "running" with stopped_at never set,
+        // even though every job succeeded. The tag is the only "it's actually a finished rerun"
+        // signal, so the row must resolve from jobs rather than spin forever.
+        let builds = [
+            makeRunningV1Build(branch: "main", workflowId: "wf-rerun")
+        ]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "build-and-deploy", status: "running", pipelineId: "pipeline-\(workflowId)", stoppedAt: nil, tag: "rerun-workflow-from-failed")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-rerun"], "success")
+    }
+
+    func testRerunWorkflowWithRunningJobStaysRunning() async {
+        // A rerun that is genuinely still in flight (a job is running, stopped_at unset) must
+        // keep spinning - the job-derivation must not prematurely claim a terminal status.
+        let builds = [
+            makeRunningV1Build(branch: "main", workflowId: "wf-rerun")
+        ]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob, Self.runningJob] },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "build-and-deploy", status: "running", pipelineId: "pipeline-\(workflowId)", stoppedAt: nil, tag: "rerun-workflow-from-start")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(appState.workflowStatusByWorkflowId["wf-rerun"], "running")
+    }
+
+    // MARK: - Deployed branch pinned past the branch cap
+
+    func testDeployedBranchPinnedIntoMenuPastBranchCap() async {
+        // Five recently-active branches fill the cap; a sigma-deployed branch older than all of
+        // them would normally be dropped. It must be pinned in so its badge still renders.
+        let recent = (0..<5).map { i in
+            makeBuild(
+                buildNum: 100 + i,
+                branch: "feat/recent-\(i)",
+                committerName: "GitHub",
+                committerEmail: "noreply@github.com",
+                workflowId: "wf-recent-\(i)",
+                startTime: "2026-07-24T1\(i):00:00Z"
+            )
+        }
+        let sigmaBuild = makeBuild(
+            buildNum: 5,
+            branch: "INFRA-782/sigma-chatbot",
+            committerName: "Colleague",
+            committerEmail: "colleague@example.test",
+            workflowId: "wf-sigma",
+            workflowName: "sigma-manual-deploy",
+            startTime: "2026-07-20T01:00:00Z"
+        )
+        let builds = recent + [sigmaBuild]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            fetchWorkflow: { workflowId in
+                let name = workflowId == "wf-sigma" ? "sigma-manual-deploy" : "build-and-deploy"
+                return WorkflowDetails(id: workflowId, name: name, status: "success", pipelineId: "pipeline-\(workflowId)")
+            },
+            fetchPipeline: { pipelineId in Self.makePipeline(id: pipelineId, actorLogin: "test-author") }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(appState.deployedBranch(forSlug: Self.slug, env: .sigma), "INFRA-782/sigma-chatbot")
+
+        let branches = Set((appState.groupedBuilds.first?.builds ?? [:]).keys)
+        XCTAssertTrue(branches.contains("INFRA-782/sigma-chatbot"))
+        XCTAssertEqual(branches.count, 6)
+    }
+
     // MARK: - Deploying (in-flight) state
 
     func testRunningDeployShowsDeployingNotDeployed() async {

@@ -8,54 +8,45 @@ struct OnboardingView: View {
     @State private var showError = false
 
     var body: some View {
-        VStack(spacing: 22) {
-            VStack(spacing: 10) {
-                AppBrandIcon(size: 70)
+        VStack(spacing: 0) {
+            VStack(spacing: 12) {
+                AppBrandIcon(size: 64)
 
                 Text("Build Notifier")
-                    .font(.title)
+                    .font(.title2)
                     .fontWeight(.bold)
 
-                Text("Track CircleCI builds and Vercel deployments from one quiet menu bar app.")
+                Text("Track CircleCI builds and Vercel deployments from your menu bar.")
                     .font(.subheadline)
                     .foregroundStyle(AppChrome.textMuted)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 340)
+                    .frame(maxWidth: 300)
             }
 
-            HStack(spacing: 10) {
-                onboardingFact("Menu bar only", systemImage: "menubar.rectangle")
-                onboardingFact("Native alerts", systemImage: "bell.badge")
-                onboardingFact("Private local storage", systemImage: "lock.shield")
-            }
+            Spacer(minLength: 28)
 
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Connect CircleCI")
-                    .font(.headline)
-                    .foregroundStyle(AppChrome.text)
-
-                Text("Add your CircleCI personal token to fetch builds, approvals, and project lists.")
-                    .font(.subheadline)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("CircleCI personal token")
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(AppChrome.textMuted)
 
-                SecureField("Personal API Token", text: $apiToken)
-                    .textFieldStyle(.roundedBorder)
+                SecureField("Paste your token", text: $apiToken)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 11)
+                    .glassCard(cornerRadius: 10)
+                    .onSubmit { Task { await validateToken() } }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    IntegrationHelpLinkRow(
-                        title: "Open CircleCI token page",
-                        destination: IntegrationHelpLinks.circleCITokenPage
-                    )
-
-                    IntegrationHelpLinkRow(
-                        title: "View CircleCI token setup guide",
-                        destination: IntegrationHelpLinks.circleCIDocs
-                    )
+                HStack(spacing: 14) {
+                    Link("Generate a token", destination: IntegrationHelpLinks.circleCITokenPage)
+                    Link("Setup guide", destination: IntegrationHelpLinks.circleCIDocs)
                 }
+                .font(.system(size: 12, weight: .medium))
+                .tint(AppChrome.accent)
+                .padding(.top, 2)
             }
-            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassCard(cornerRadius: 14)
 
             if showError, let error = appState.error {
                 HStack(spacing: 8) {
@@ -71,7 +62,10 @@ struct OnboardingView: View {
                 .padding(.vertical, 10)
                 .background(AppChrome.danger.opacity(0.08))
                 .cornerRadius(AppChrome.radiusLarge)
+                .padding(.top, 12)
             }
+
+            Spacer(minLength: 24)
 
             VStack(spacing: 10) {
                 Button {
@@ -85,7 +79,7 @@ struct OnboardingView: View {
                                 .scaleEffect(0.7)
                                 .frame(width: 16, height: 16)
                         }
-                        Text(isValidating ? "Validating..." : "Validate & Continue")
+                        Text(isValidating ? "Validating…" : "Validate & Continue")
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -93,19 +87,17 @@ struct OnboardingView: View {
                 .controlSize(.large)
                 .disabled(apiToken.isEmpty || isValidating)
 
-                Button("Skip for now and configure integrations later") {
+                Button("Skip for now") {
                     appState.currentScreen = .main
                 }
                 .buttonStyle(.plain)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
-
-            Spacer()
         }
-        .padding(32)
-        .frame(width: 430, height: 520)
-        .background(GlassBackground(material: .underWindowBackground, cornerRadius: 0))
+        .padding(28)
+        .frame(width: 400, height: 460)
+        .background(AppChrome.window)
         .background(MenuWindowConfigurator())
     }
 
@@ -123,18 +115,5 @@ struct OnboardingView: View {
         } else {
             showError = true
         }
-    }
-
-    private func onboardingFact(_ title: String, systemImage: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-            Text(title)
-                .lineLimit(1)
-        }
-        .font(.caption)
-        .foregroundStyle(AppChrome.textMuted)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .glassCard(cornerRadius: 999)
     }
 }
