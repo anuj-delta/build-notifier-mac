@@ -49,7 +49,14 @@ struct WatchedProject: Codable, Identifiable, Equatable, Hashable {
     var slug: String {
         "\(orgName)/\(repoName)"
     }
-    
+
+    /// Source repository page. `vcsType` is CircleCI's short prefix ("gh"/"bb"); anything
+    /// unrecognized falls back to GitHub, matching the CircleCI project defaults.
+    var repositoryURL: URL? {
+        let host = vcsType == "bb" ? "bitbucket.org" : "github.com"
+        return URL(string: "https://\(host)/\(orgName)/\(repoName)")
+    }
+
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }

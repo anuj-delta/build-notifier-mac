@@ -568,47 +568,16 @@ struct SettingsView: View {
     private var circleCITab: some View {
         if appState.hasCircleCIToken {
             VStack(alignment: .leading, spacing: 20) {
-                SettingsSection(
-                    title: "Account",
-                    subtitle: "CircleCI connection details.",
-                    systemImage: "person.crop.circle",
-                    accessory: {
-                        HStack(spacing: 6) {
-                            AccountActionButton(title: "Change token") {
-                                confirmChangeToken = true
-                            }
-                            AccountActionButton(title: "Disconnect", destructive: true) {
-                                confirmDisconnectCircleCI = true
-                            }
-                        }
-                    }
-                ) {
-                    SettingsValueRow(
-                        label: "Connected account",
-                        value: appState.currentUser?.login ?? appState.currentUser?.name ?? "Unknown"
-                    )
-                    Divider()
-                    SettingsValueRow(
-                        label: "Masked token",
-                        value: KeychainService.shared.maskedCircleCIToken() ?? "Unavailable"
-                    )
-                }
-
-                SettingsSection(
-                    title: "Quick Links",
-                    subtitle: "Open CircleCI account resources.",
-                    systemImage: "link"
-                ) {
-                    IntegrationHelpLinkRow(
-                        title: "Open CircleCI token page",
-                        destination: IntegrationHelpLinks.circleCITokenPage
-                    )
-                    Divider()
-                    IntegrationHelpLinkRow(
-                        title: "View CircleCI token setup guide",
-                        destination: IntegrationHelpLinks.circleCIDocs
-                    )
-                }
+                AccountPanel(
+                    provider: .circleCI,
+                    accountName: appState.currentUser?.login ?? appState.currentUser?.name ?? "Unknown",
+                    maskedToken: KeychainService.shared.maskedCircleCIToken() ?? "Unavailable",
+                    tokenPageURL: IntegrationHelpLinks.circleCITokenPage,
+                    setupGuideURL: IntegrationHelpLinks.circleCIDocs,
+                    canChangeToken: true,
+                    onChangeToken: { confirmChangeToken = true },
+                    onDisconnect: { confirmDisconnectCircleCI = true }
+                )
 
                 SettingsSection(
                     title: "Watched Projects",
@@ -715,47 +684,14 @@ struct SettingsView: View {
     private var vercelTab: some View {
         if appState.hasVercelToken {
             VStack(alignment: .leading, spacing: 20) {
-                SettingsSection(
-                    title: "Account",
-                    subtitle: "Vercel connection details.",
-                    systemImage: "person.crop.circle.badge.checkmark",
-                    accessory: {
-                        AccountActionButton(title: "Disconnect", destructive: true) {
-                            confirmDisconnectVercel = true
-                        }
-                    }
-                ) {
-                    SettingsValueRow(
-                        label: "Connected account",
-                        value: appState.vercelUser?.username ?? appState.vercelUser?.email ?? "Unknown"
-                    )
-                    Divider()
-                    SettingsValueRow(
-                        label: "Masked token",
-                        value: KeychainService.shared.maskedVercelToken() ?? "Unavailable"
-                    )
-
-                    if let teamId = appState.preferences.selectedVercelTeamId, !teamId.isEmpty {
-                        Divider()
-                        SettingsValueRow(label: "Team scope", value: teamId)
-                    }
-                }
-
-                SettingsSection(
-                    title: "Quick Links",
-                    subtitle: "Open Vercel account resources.",
-                    systemImage: "link"
-                ) {
-                    IntegrationHelpLinkRow(
-                        title: "Open Vercel token page",
-                        destination: IntegrationHelpLinks.vercelTokenPage
-                    )
-                    Divider()
-                    IntegrationHelpLinkRow(
-                        title: "View Vercel token setup guide",
-                        destination: IntegrationHelpLinks.vercelDocs
-                    )
-                }
+                AccountPanel(
+                    provider: .vercel,
+                    accountName: appState.vercelUser?.username ?? appState.vercelUser?.email ?? "Unknown",
+                    maskedToken: KeychainService.shared.maskedVercelToken() ?? "Unavailable",
+                    tokenPageURL: IntegrationHelpLinks.vercelTokenPage,
+                    setupGuideURL: IntegrationHelpLinks.vercelDocs,
+                    onDisconnect: { confirmDisconnectVercel = true }
+                )
 
                 SettingsSection(
                     title: "Watched Projects",
@@ -768,6 +704,7 @@ struct SettingsView: View {
                         ForEach(Array(appState.preferences.watchedVercelProjects.enumerated()), id: \.element.id) { index, project in
                             WatchedVercelProjectRow(
                                 project: project,
+                                repositoryURL: vercelProjectURL(project),
                                 onUpdate: { updated in
                                     appState.updateWatchedVercelProject(updated)
                                 },
@@ -838,6 +775,21 @@ struct SettingsView: View {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.2"
     }
 
+    /// Vercel dashboard URL for a watched project. Owner segment is the team slug when the
+    /// project is team-scoped, otherwise the connected user's handle. Nil if neither resolves,
+    /// leaving the row name as plain text rather than linking somewhere wrong.
+    private func vercelProjectURL(_ project: WatchedVercelProject) -> URL? {
+        let owner: String?
+        if let teamId = project.teamId,
+           let team = appState.vercelTeams.first(where: { $0.id == teamId }) {
+            owner = team.slug
+        } else {
+            owner = appState.vercelUser?.username
+        }
+        guard let owner, !owner.isEmpty else { return nil }
+        return URL(string: "https://vercel.com/\(owner)/\(project.projectName)")
+    }
+
     private func presentCircleCIProjectSelection(refreshProjects: Bool) {
         appState.showingSettings = false
         dismiss()
@@ -854,33 +806,144 @@ struct SettingsView: View {
     }
 }
 
-/// Subtle text button used in a section header for account-level actions (change token,
-/// disconnect). Gains a soft tinted capsule on hover so it reads as tappable without the
-/// visual weight of a bordered button.
-private struct AccountActionButton: View {
-    let title: String
-    var destructive: Bool = false
-    let action: () -> Void
+private enum AccountProvider {
+    case circleCI, vercel
+}
 
-    @State private var isHovered = false
+/// A single quiet row for a connected integration: provider mark, account name, inline
+/// connection status and masked-token fingerprint, with token help and account actions
+/// tucked behind a "…" menu. Sits under a small eyebrow label rather than a full section
+/// header, since the tab it lives in already names the provider.
+private struct AccountPanel: View {
+    let provider: AccountProvider
+    let accountName: String
+    let maskedToken: String
+    let tokenPageURL: URL
+    let setupGuideURL: URL
+    var canChangeToken: Bool = false
+    var onChangeToken: () -> Void = {}
+    let onDisconnect: () -> Void
 
-    private var tint: Color { destructive ? AppChrome.danger : AppChrome.accent }
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(tint)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule().fill(isHovered ? tint.opacity(destructive ? 0.14 : 0.16) : Color.clear)
-                )
-                .contentShape(Capsule())
+        VStack(alignment: .leading, spacing: 9) {
+            Text("Account")
+                .font(.system(size: 11, weight: .semibold))
+                .textCase(.uppercase)
+                .tracking(0.8)
+                .foregroundStyle(AppChrome.textMuted)
+                .padding(.leading, 2)
+
+            HStack(spacing: 12) {
+                mark
+
+                Text(accountName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AppChrome.text)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+
+                metaLine
+
+                Spacer(minLength: 8)
+
+                menu
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .glassCard()
         }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .pointingHandCursor()
+    }
+
+    private var metaLine: some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(AppChrome.success)
+                .frame(width: 7, height: 7)
+            Text("Connected")
+                .foregroundStyle(AppChrome.textMuted)
+
+            separatorDot
+            Text(maskedToken)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(AppChrome.textSecondary)
+                .lineLimit(1)
+                .textSelection(.enabled)
+        }
+        .font(.system(size: 12.5, weight: .regular))
+        .fixedSize()
+    }
+
+    private var separatorDot: some View {
+        Text("·").foregroundStyle(AppChrome.border)
+    }
+
+    @ViewBuilder private var mark: some View {
+        switch provider {
+        case .circleCI:
+            ZStack {
+                Circle()
+                    .stroke(AppChrome.success, lineWidth: 2.5)
+                    .frame(width: 15, height: 15)
+                Circle()
+                    .fill(AppChrome.success)
+                    .frame(width: 4, height: 4)
+            }
+            .frame(width: 30, height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(AppChrome.successSoft)
+            )
+        case .vercel:
+            Image(systemName: "triangle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(AppChrome.text)
+                .frame(width: 30, height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(AppChrome.surfaceMuted)
+                )
+        }
+    }
+
+    private var menu: some View {
+        Menu {
+            Button { openURL(tokenPageURL) } label: {
+                Label("Get a token", systemImage: "arrow.up.right")
+            }
+            Button { openURL(setupGuideURL) } label: {
+                Label("Setup guide", systemImage: "arrow.up.right")
+            }
+            Divider()
+            if canChangeToken {
+                Button { onChangeToken() } label: {
+                    Label("Change token", systemImage: "key")
+                }
+            }
+            Button(role: .destructive) { onDisconnect() } label: {
+                Label("Disconnect", systemImage: "minus.circle")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(AppChrome.textMuted)
+                .frame(width: 30, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(AppChrome.surfaceMuted)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(AppChrome.border, lineWidth: 1)
+                )
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Account actions")
     }
 }
 
@@ -1369,43 +1432,25 @@ struct WatchedProjectRow: View {
             .labelsHidden()
             .toggleStyle(CompactSwitchToggleStyle())
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(project.displayName)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(AppChrome.text)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            WatchedRowNameLink(
+                url: project.repositoryURL,
+                openTitle: "Open repository",
+                name: Text(project.orgName + "/").foregroundStyle(AppChrome.textMuted)
+                    + Text(project.repoName).foregroundStyle(AppChrome.text)
+            )
+            .opacity(project.isEnabled ? 1 : 0.45)
 
-                Text(project.followMode.displayName)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(AppChrome.textMuted)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Picker("", selection: Binding(
+            FollowModeSegmentedControl(mode: Binding(
                 get: { project.followMode },
                 set: {
                     var updated = project
                     updated.followMode = $0
                     onUpdate(updated)
                 }
-            )) {
-                ForEach(FollowMode.allCases, id: \.self) { mode in
-                    Text(mode.displayName).tag(mode)
-                }
-            }
-            .labelsHidden()
-            .frame(width: 138)
+            ))
+            .opacity(project.isEnabled ? 1 : 0.45)
 
-            Button {
-                onRemove()
-            } label: {
-                Image(systemName: "trash")
-                    .foregroundStyle(.red)
-            }
-            .buttonStyle(.plain)
-            .help("Remove project")
+            RowActionsMenu(openURL: project.repositoryURL, openTitle: "Open repository", onRemove: onRemove)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -1414,6 +1459,7 @@ struct WatchedProjectRow: View {
 
 struct WatchedVercelProjectRow: View {
     let project: WatchedVercelProject
+    var repositoryURL: URL? = nil
     let onUpdate: (WatchedVercelProject) -> Void
     let onRemove: () -> Void
 
@@ -1430,46 +1476,139 @@ struct WatchedVercelProjectRow: View {
             .labelsHidden()
             .toggleStyle(CompactSwitchToggleStyle())
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(project.displayName)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(AppChrome.text)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            WatchedRowNameLink(
+                url: repositoryURL,
+                openTitle: "Open on Vercel",
+                name: Text(project.projectName).foregroundStyle(AppChrome.text)
+            )
+            .opacity(project.isEnabled ? 1 : 0.45)
 
-                Text(project.followMode.displayName)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(AppChrome.textMuted)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Picker("", selection: Binding(
+            FollowModeSegmentedControl(mode: Binding(
                 get: { project.followMode },
                 set: {
                     var updated = project
                     updated.followMode = $0
                     onUpdate(updated)
                 }
-            )) {
-                ForEach(FollowMode.allCases, id: \.self) { mode in
-                    Text(mode.displayName).tag(mode)
-                }
-            }
-            .labelsHidden()
-            .frame(width: 138)
+            ))
+            .opacity(project.isEnabled ? 1 : 0.45)
 
-            Button {
-                onRemove()
-            } label: {
-                Image(systemName: "trash")
-                    .foregroundStyle(.red)
-            }
-            .buttonStyle(.plain)
-            .help("Remove project")
+            RowActionsMenu(openURL: repositoryURL, openTitle: "Open on Vercel", onRemove: onRemove)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+}
+
+/// The project name in a watched-project row. When a URL is known the name becomes a
+/// link (subtle underline on hover); otherwise it's plain text. Takes a pre-styled `Text`
+/// so callers can dim the org and emphasize the repo.
+private struct WatchedRowNameLink: View {
+    let url: URL?
+    let openTitle: String
+    let name: Text
+
+    @Environment(\.openURL) private var openURL
+    @State private var hovered = false
+
+    private var styled: some View {
+        name
+            .font(.system(size: 13, weight: .medium))
+            .lineLimit(1)
+            .truncationMode(.middle)
+    }
+
+    var body: some View {
+        Group {
+            if let url {
+                Button { openURL(url) } label: {
+                    styled.underline(hovered, color: AppChrome.textMuted)
+                }
+                .buttonStyle(.plain)
+                .onHover { hovered = $0 }
+                .pointingHandCursor()
+                .help(openTitle)
+            } else {
+                styled
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Trailing "…" menu for a watched-project row: opens the project page and removes it from
+/// the watchlist. Replaces an always-visible trash icon so removal reads as deliberate.
+private struct RowActionsMenu: View {
+    let openURL: URL?
+    let openTitle: String
+    let onRemove: () -> Void
+
+    @Environment(\.openURL) private var open
+
+    var body: some View {
+        Menu {
+            if let openURL {
+                Button { open(openURL) } label: {
+                    Label(openTitle, systemImage: "arrow.up.right")
+                }
+                Divider()
+            }
+            Button(role: .destructive, action: onRemove) {
+                Label("Remove from watchlist", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(AppChrome.textMuted)
+                .frame(width: 28, height: 24)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Project actions")
+    }
+}
+
+/// Compact two-segment mode switch for a watched-project row. Distinct in shape from the
+/// row's on/off switch so "watching" and "which builds" read as separate controls.
+private struct FollowModeSegmentedControl: View {
+    @Binding var mode: FollowMode
+
+    var body: some View {
+        HStack(spacing: 2) {
+            segment(.all, label: "All")
+            segment(.mine, label: "Mine")
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(AppChrome.surfaceMuted)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(AppChrome.border, lineWidth: 1)
+        )
+    }
+
+    private func segment(_ value: FollowMode, label: String) -> some View {
+        let isSelected = mode == value
+        return Button {
+            if mode != value { mode = value }
+        } label: {
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(isSelected ? Color.white : AppChrome.textMuted)
+                .frame(width: 46, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isSelected ? AppChrome.accent : Color.clear)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(value.displayName)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
