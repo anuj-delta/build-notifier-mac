@@ -121,7 +121,7 @@ struct SettingsView: View {
                 if let update = appState.availableUpdate {
                     SidebarUpdateRow(version: update.version, destination: update.releaseURL)
                 } else {
-                    Text("Version \(appVersion)")
+                    Text("v\(appVersion)")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(AppChrome.textMuted)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -909,7 +909,7 @@ private struct SidebarUpdateRow: View {
                     Text("Update available")
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(AppChrome.text)
-                    Text("Version \(version)")
+                    Text("v\(version)")
                         .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(AppChrome.textMuted)
                 }
