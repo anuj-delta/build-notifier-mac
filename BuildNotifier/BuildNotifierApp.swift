@@ -295,25 +295,15 @@ struct OnboardingWindowContent: View {
                 ProjectSelectorView(appState: appState)
                 
             default:
-                VStack(spacing: 16) {
-                    AppBrandIcon(size: 54)
-                    
-                    Text("Setup Complete!")
-                        .font(.headline)
-                    
-                    Text("You can close this window")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    
-                    Button("Close") {
-                        dismiss()
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(32)
-                .frame(width: 300, height: 200)
+                // Setup finished (or was skipped): close this window instead of showing a
+                // redundant "all done" screen - the menu bar takes over from here.
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .onAppear { dismiss() }
             }
         }
+        .onAppear { AppWindowManager.appWindowAppeared() }
+        .onDisappear { AppWindowManager.appWindowDisappeared() }
     }
 }
 

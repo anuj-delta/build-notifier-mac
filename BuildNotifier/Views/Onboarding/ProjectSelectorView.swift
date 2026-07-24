@@ -32,8 +32,12 @@ struct ProjectSelectorView: View {
                     .multilineTextAlignment(.center)
             }
 
-            HStack(spacing: 8) {
-                Label("Only projects you follow on CircleCI appear here.", systemImage: "info.circle.fill")
+            HStack(spacing: 10) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppChrome.textMuted)
+
+                Text("Only projects you follow on CircleCI appear here.")
                     .font(.caption)
                     .foregroundStyle(AppChrome.textMuted)
 
@@ -57,10 +61,7 @@ struct ProjectSelectorView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(AppChrome.accentSoft)
-            )
+            .glassCard(cornerRadius: 10)
 
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
@@ -148,7 +149,7 @@ struct ProjectSelectorView: View {
         }
         .padding(24)
         .frame(width: 580, height: 600)
-        .background(GlassBackground(material: .underWindowBackground, cornerRadius: 0))
+        .background(AppChrome.window)
         .background(MenuWindowConfigurator())
         .onAppear {
             initializeFromExistingWatchlist()
@@ -223,19 +224,12 @@ struct ProjectRow: View {
             }
             .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(project.displayName)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(AppChrome.text)
-
-                if let vcsUrl = project.vcsUrl {
-                    Text(vcsUrl)
-                        .font(.caption)
-                        .foregroundStyle(AppChrome.textMuted)
-                        .lineLimit(1)
-                }
-            }
+            Text(project.displayName)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(AppChrome.text)
+                .lineLimit(1)
+                .truncationMode(.middle)
 
             Spacer()
 

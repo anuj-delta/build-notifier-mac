@@ -106,6 +106,22 @@ struct VercelProjectSection: View {
 
     @State private var isExpanded = true
 
+    private static let maxDeployments = 5
+
+    /// The deployments to show: the newest N by creation time, plus the current production
+    /// deployment pinned in even when a burst of preview deployments would otherwise push it
+    /// past the cap - so a live prod deploy never silently drops off the list. Sorts explicitly
+    /// rather than trusting the API's return order.
+    private var displayedDeployments: [VercelDeployment] {
+        let sorted = deployments.sorted { $0.createdAt > $1.createdAt }
+        var shown = Array(sorted.prefix(Self.maxDeployments))
+        if let latestProduction = sorted.first(where: { $0.isProduction }),
+           !shown.contains(where: { $0.id == latestProduction.id }) {
+            shown.append(latestProduction)
+        }
+        return shown
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
@@ -122,7 +138,7 @@ struct VercelProjectSection: View {
 
                     Spacer()
 
-                    Text("\(min(deployments.count, 5))")
+                    Text("\(displayedDeployments.count)")
                         .font(.system(size: 11, weight: .medium))
                         .monospacedDigit()
                         .foregroundStyle(AppChrome.textMuted)
@@ -148,7 +164,7 @@ struct VercelProjectSection: View {
                         .padding(.vertical, 14)
                 } else {
                     VStack(spacing: 2) {
-                        ForEach(Array(deployments.prefix(5).enumerated()), id: \.element.id) { _, deployment in
+                        ForEach(displayedDeployments) { deployment in
                             VercelDeploymentRow(deployment: deployment)
                         }
                     }

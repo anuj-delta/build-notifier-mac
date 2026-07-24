@@ -462,10 +462,13 @@ final class BuildPoller: ObservableObject {
             guard var status = workflow.status else { return nil }
 
             // A rerun-from-failed can leave the rollup stuck at a non-terminal value
-            // (`running`/`failing`) even though the workflow has stopped, which would spin the
-            // row forever. Once `stopped_at` is set, trust the jobs over the stuck rollup.
-            if workflow.stoppedAt != nil,
-               !Self.terminalWorkflowStatuses.contains(status),
+            // (`running`/`failing`) even though every job has finished, which would spin the
+            // row forever. CircleCI sometimes never sets `stopped_at` on these reruns either,
+            // so trust the jobs over the stuck rollup once the workflow has either stopped or
+            // is a rerun. `deriveTerminalStatusFromJobs` still returns nil while any job is in
+            // flight, so a genuinely running rerun won't resolve early.
+            if !Self.terminalWorkflowStatuses.contains(status),
+               workflow.stoppedAt != nil || workflow.isRerun,
                let derived = await deriveTerminalStatusFromJobs(workflowId) {
                 status = derived
             }
