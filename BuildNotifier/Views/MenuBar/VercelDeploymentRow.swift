@@ -1,9 +1,8 @@
 import SwiftUI
 
 struct VercelDeploymentRow: View {
-    private let labelMaxWidth: CGFloat = 220
-
     let deployment: VercelDeployment
+    let scopeSlug: String?
 
     @State private var isHovered = false
 
@@ -12,13 +11,23 @@ struct VercelDeploymentRow: View {
             statusGutter
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(primaryLabel)
-                    .font(Typography.rowTitle)
-                    .foregroundStyle(AppChrome.text)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: labelMaxWidth, alignment: .leading)
-                    .shimmering(active: status.isInProgress)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(primaryLabel)
+                        .font(Typography.rowTitle)
+                        .foregroundStyle(AppChrome.text)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(1)
+                        .shimmering(active: status.isInProgress)
+
+                    if let sha = deployment.meta?.commitSha {
+                        CommitDeploymentBadge(sha: sha, isRowHovered: isHovered) {
+                            open(commitDeploymentUrl)
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+                }
 
                 HStack(spacing: 5) {
                     if let author = deployment.authorDisplayName {
@@ -60,8 +69,11 @@ struct VercelDeploymentRow: View {
         }
         .pointingHandCursor()
         .onTapGesture {
-            openDeployment()
+            open(branchPreviewUrl ?? commitDeploymentUrl)
         }
+        .help(branchPreviewUrl == nil
+              ? "Open this deployment"
+              : "Open the branch preview - always the latest deploy on this branch")
     }
 
     private var status: RowStatus {
@@ -91,11 +103,56 @@ struct VercelDeploymentRow: View {
         return "Unknown ref"
     }
 
-    private func openDeployment() {
-        let urlString = deployment.deploymentUrl ?? deployment.vercelDashboardUrl
+    private var branchPreviewUrl: String? {
+        deployment.branchPreviewUrl(scopeSlug: scopeSlug)
+    }
+
+    private var commitDeploymentUrl: String {
+        deployment.deploymentUrl ?? deployment.vercelDashboardUrl
+    }
+
+    private func open(_ urlString: String) {
         if let url = URL(string: urlString) {
             NSWorkspace.shared.open(url)
         }
+    }
+}
+
+/// The short commit SHA, doubling as the way into this exact deployment - the row itself opens the
+/// branch preview, which moves on with every new push.
+private struct CommitDeploymentBadge: View {
+    let sha: String
+    let isRowHovered: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(sha)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(isHovered ? AppChrome.accent : AppChrome.textMuted)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule()
+                        .fill(isHovered ? AppChrome.accentSoft : AppChrome.surfaceMuted)
+                        .overlay(
+                            Capsule().strokeBorder(
+                                isHovered ? AppChrome.accent.opacity(0.8) : AppChrome.border.opacity(0.6),
+                                lineWidth: 1
+                            )
+                        )
+                )
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize(horizontal: true, vertical: false)
+        .opacity(isRowHovered ? 1 : 0.85)
+        .animation(Motion.hover, value: isHovered)
+        .onHover { isHovered = $0 }
+        .pointingHandCursor()
+        .help("Open this commit's deployment")
     }
 }
 
@@ -165,7 +222,7 @@ struct VercelProjectSection: View {
                 } else {
                     VStack(spacing: 2) {
                         ForEach(displayedDeployments) { deployment in
-                            VercelDeploymentRow(deployment: deployment)
+                            VercelDeploymentRow(deployment: deployment, scopeSlug: project.teamSlug)
                         }
                     }
                     .padding(.bottom, 4)
