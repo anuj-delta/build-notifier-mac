@@ -687,6 +687,7 @@ final class AppState {
         
         do {
             vercelTeams = try await VercelAPI.shared.getTeams()
+            backfillVercelScopeSlugs()
             isLoading = false
         } catch {
             reportError(error)
@@ -708,7 +709,12 @@ final class AppState {
     }
     
     func addVercelToWatchlist(_ project: VercelProject, teamId: String?, followMode: FollowMode = .all) {
-        let watchedProject = WatchedVercelProject(from: project, teamId: teamId, followMode: followMode)
+        let watchedProject = WatchedVercelProject(
+            from: project,
+            teamId: teamId,
+            teamSlug: vercelScopeSlug(forTeamId: teamId),
+            followMode: followMode
+        )
         if let index = preferences.watchedVercelProjects.firstIndex(where: { $0.id == watchedProject.id }) {
             preferences.watchedVercelProjects[index] = watchedProject
             preferences.save()
@@ -730,6 +736,23 @@ final class AppState {
         }
     }
     
+    func vercelScopeSlug(forTeamId teamId: String?) -> String? {
+        guard let teamId else { return vercelUser?.username }
+        return vercelTeams.first(where: { $0.id == teamId })?.slug
+    }
+
+    /// Projects watched before the scope slug was stored have no branch URL to open, so fetch the teams
+    /// once on launch to fill it in.
+    func resolveMissingVercelScopeSlugs() async {
+        let missing = preferences.watchedVercelProjects.filter { $0.teamSlug == nil }
+        guard !missing.isEmpty else { return }
+
+        if vercelTeams.isEmpty, missing.contains(where: { $0.teamId != nil }) {
+            vercelTeams = (try? await VercelAPI.shared.getTeams()) ?? []
+        }
+        backfillVercelScopeSlugs()
+    }
+
     func disconnectVercel() {
         stopVercelPolling()
         try? KeychainService.shared.deleteVercelToken()
@@ -746,11 +769,27 @@ final class AppState {
     }
     
     // MARK: - Private
-    
+
+    private func backfillVercelScopeSlugs() {
+        var didChange = false
+        for index in preferences.watchedVercelProjects.indices
+        where preferences.watchedVercelProjects[index].teamSlug == nil {
+            guard let slug = vercelScopeSlug(forTeamId: preferences.watchedVercelProjects[index].teamId) else {
+                continue
+            }
+            preferences.watchedVercelProjects[index].teamSlug = slug
+            didChange = true
+        }
+        if didChange {
+            preferences.save()
+        }
+    }
+
     private func restoreVercelSession() async {
         do {
             let response = try await VercelAPI.shared.validateToken()
             vercelUser = response.user
+            await resolveMissingVercelScopeSlugs()
         } catch {
             // Keep the saved token for now; account details can be refreshed later.
             vercelUser = nil
