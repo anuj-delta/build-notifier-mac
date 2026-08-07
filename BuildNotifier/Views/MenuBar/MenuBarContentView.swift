@@ -811,7 +811,7 @@ struct MenuBarContentView: View {
     private func openBuildUrl(_ urlString: String?) {
         guard let urlString, let url = URL(string: urlString) else { return }
         AppWindowManager.dismissActiveMenuBarWindow {
-            NSWorkspace.shared.open(url)
+            ExternalLink.open(url)
         }
     }
 
