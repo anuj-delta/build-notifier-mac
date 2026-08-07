@@ -258,10 +258,15 @@ final class AppState {
             }
 
             let branches: [BranchBuild] = selectedBranches.compactMap { branch in
-                guard let latest = buildsByBranch[branch]?.max(by: {
-                    ($0.activityDate ?? .distantPast) < ($1.activityDate ?? .distantPast)
-                }) else { return nil }
-                return BranchBuild(branch: branch, build: latest)
+                guard let jobs = buildsByBranch[branch],
+                      let latest = jobs.max(by: {
+                          ($0.activityDate ?? .distantPast) < ($1.activityDate ?? .distantPast)
+                      }) else { return nil }
+                return BranchBuild(
+                    branch: branch,
+                    build: latest,
+                    span: WorkflowSpan(jobs: siblings(of: latest, in: jobs))
+                )
             }
 
             result.append((
@@ -277,6 +282,13 @@ final class AppState {
                 return lhs.group.project.displayName.lowercased() < rhs.group.project.displayName.lowercased()
             }
             .map(\.group)
+    }
+
+    /// The other jobs of `build`'s workflow. A build with no workflow id stands alone rather
+    /// than matching every other id-less build on the branch.
+    private func siblings(of build: Build, in jobs: [Build]) -> [Build] {
+        guard let id = build.workflows?.workflowId else { return [build] }
+        return jobs.filter { $0.workflows?.workflowId == id }
     }
 
     /// The branch currently live on each deploy environment per project, resolved during

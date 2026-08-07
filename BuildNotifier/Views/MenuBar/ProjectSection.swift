@@ -190,6 +190,7 @@ struct ProjectSection: View {
                         let workflowId = build.workflows?.workflowId
                         BuildRow(
                             build: build,
+                            span: item.span,
                             resolvedWorkflowStatus: workflowId.flatMap { workflowStatusByWorkflowId[$0] },
                             canAutoApprove: workflowId.map { approvalCapableWorkflowIds.contains($0) } ?? false,
                             isAutoApproveArmed: workflowId.map { armedAutoApprovalWorkflowIds.contains($0) } ?? false,
@@ -228,6 +229,7 @@ struct BuildRow: View {
     private let trailingActionRowHeight: CGFloat = 14
 
     let build: Build
+    let span: WorkflowSpan
     let resolvedWorkflowStatus: String?
     let canAutoApprove: Bool
     let isAutoApproveArmed: Bool
@@ -298,7 +300,7 @@ struct BuildRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .trailing, spacing: 6) {
-                    Text(build.relativeTime)
+                    Text(span.label(inProgress: status.isInProgress))
                         .font(Typography.rowMeta)
                         .foregroundStyle(AppChrome.textMuted)
                         .monospacedDigit()

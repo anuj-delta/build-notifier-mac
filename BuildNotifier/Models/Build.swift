@@ -291,28 +291,16 @@ extension Build {
         return "Build #\(buildNum)"
     }
 
-    var relativeTime: String {
-        guard let buildDate = activityDate else {
-            return "unknown"
-        }
-        
-        let now = Date()
-        let interval = now.timeIntervalSince(buildDate)
-        
-        if interval < 60 {
-            return "just now"
-        } else if interval < 3600 {
-            let minutes = Int(interval / 60)
-            return "\(minutes)m ago"
-        } else if interval < 86400 {
-            let hours = Int(interval / 3600)
-            return "\(hours)h ago"
-        } else {
-            let days = Int(interval / 86400)
-            return "\(days)d ago"
-        }
+    var startedDate: Date? {
+        guard let startTime else { return nil }
+        return Self.parseISO8601(startTime)
     }
-    
+
+    var stoppedDate: Date? {
+        guard let stopTime else { return nil }
+        return Self.parseISO8601(stopTime)
+    }
+
     // Sort comparators parse dates thousands of times per redraw, and allocating a
     // formatter per call dominated the cost.
     private static let fractionalSecondsFormatter: ISO8601DateFormatter = {
