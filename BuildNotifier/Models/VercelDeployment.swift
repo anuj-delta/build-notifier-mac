@@ -219,6 +219,12 @@ extension VercelDeployment {
     var createdDate: Date {
         Date(timeIntervalSince1970: TimeInterval(createdAt) / 1000)
     }
+
+    /// When the deployment reached the state a notification would be about.
+    var stateChangeDate: Date {
+        guard let ready else { return createdDate }
+        return Date(timeIntervalSince1970: TimeInterval(ready) / 1000)
+    }
     
     var relativeTime: String {
         let now = Date()

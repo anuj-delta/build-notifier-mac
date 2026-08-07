@@ -41,6 +41,7 @@ final class BuildPoller: ObservableObject {
     private let sendBuildFailureNotification: (Build, Bool) -> Void
     private let sendBuildSuccessNotification: (Build, Bool) -> Void
     private let sendPendingApprovalNotification: (PendingApproval, Bool) -> Void
+    private let now: () -> Date
     private var cachedPipelineIdByWorkflowId: [String: String] = [:]
     private var cachedActorByPipelineId: [String: PipelineActorCacheValue] = [:]
     private var cachedTerminalWorkflowStatusById: [String: String] = [:]
@@ -72,8 +73,10 @@ final class BuildPoller: ObservableObject {
         sendBuildStartedNotification: ((Build, Bool) -> Void)? = nil,
         sendBuildFailureNotification: ((Build, Bool) -> Void)? = nil,
         sendBuildSuccessNotification: ((Build, Bool) -> Void)? = nil,
-        sendPendingApprovalNotification: ((PendingApproval, Bool) -> Void)? = nil
+        sendPendingApprovalNotification: ((PendingApproval, Bool) -> Void)? = nil,
+        now: @escaping () -> Date = { Date() }
     ) {
+        self.now = now
         self.fetchBuilds = fetchBuilds ?? { vcsType, orgName, repoName, limit in
             try await CircleCIAPI.shared.getBuilds(
                 vcsType: vcsType,
@@ -624,7 +627,9 @@ final class BuildPoller: ObservableObject {
                 if !appState.notifiedStartedWorkflows.contains(workflowId) {
                     if builds.contains(where: { $0.buildStatus.isRunning }) {
                         if let representativeBuild = builds.first {
-                            sendBuildStartedNotification(representativeBuild, soundEnabled)
+                            if NotificationManager.isFresh(representativeBuild.stateChangeDate, now: now()) {
+                                sendBuildStartedNotification(representativeBuild, soundEnabled)
+                            }
                             newStartedWorkflows.insert(workflowId)
                         }
                     }
@@ -635,7 +640,9 @@ final class BuildPoller: ObservableObject {
             if let failedBuild = builds.first(where: { $0.buildStatus.isFailure }) {
                 if notificationsEnabled && preferences.notifyOnFailure
                     && !appState.notifiedFailedWorkflows.contains(workflowId) {
-                    sendBuildFailureNotification(failedBuild, soundEnabled)
+                    if NotificationManager.isFresh(failedBuild.stateChangeDate, now: now()) {
+                        sendBuildFailureNotification(failedBuild, soundEnabled)
+                    }
                     newFailedWorkflows.insert(workflowId)
                 }
                 if preferences.playFailureSound
@@ -681,7 +688,9 @@ final class BuildPoller: ObservableObject {
                             newSuccessWorkflows.insert(workflowId)
                             newCelebratedSuccess.insert(workflowId)
                         } else if wantsSuccessNotification {
-                            sendBuildSuccessNotification(representativeBuild, soundEnabled)
+                            if NotificationManager.isFresh(representativeBuild.stateChangeDate, now: now()) {
+                                sendBuildSuccessNotification(representativeBuild, soundEnabled)
+                            }
                             newSuccessWorkflows.insert(workflowId)
                         }
                         if wantsConfetti, !suppressRecoveredBaseline, let celebrationKind {

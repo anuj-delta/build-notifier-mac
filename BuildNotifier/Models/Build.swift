@@ -265,6 +265,15 @@ extension Build {
         return nil
     }
     
+    /// When the build reached the state a notification would be about. `activityDate`
+    /// prefers `start_time`, which for a long build that just passed is an hour stale.
+    var stateChangeDate: Date? {
+        if buildStatus.isTerminal, let stopTime {
+            return Self.parseISO8601(stopTime)
+        }
+        return activityDate
+    }
+
     var workflowUrl: String? {
         guard let workflowId = workflows?.workflowId else { return nil }
         return "https://app.circleci.com/pipelines/workflows/\(workflowId)"
