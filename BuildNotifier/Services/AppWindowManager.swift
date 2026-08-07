@@ -12,6 +12,15 @@ enum AppWindowManager {
         Task { action() }
     }
 
+    /// Every link in the menu goes through here, so the panel closes on the way out instead
+    /// of hanging around behind the browser.
+    static func openFromMenu(_ urlString: String?) {
+        guard let urlString, let url = URL(string: urlString) else { return }
+        dismissActiveMenuBarWindow {
+            ExternalLink.open(url)
+        }
+    }
+
     // MARK: - Settings and setup windows
 
     private static var settings: NSWindow?
