@@ -313,13 +313,21 @@ extension Build {
         }
     }
     
-    private static func parseISO8601(_ value: String) -> Date? {
+    // Sort comparators parse dates thousands of times per redraw, and allocating a
+    // formatter per call dominated the cost.
+    private static let fractionalSecondsFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: value) {
-            return date
-        }
+        return formatter
+    }()
+
+    private static let wholeSecondsFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: value)
+        return formatter
+    }()
+
+    private static func parseISO8601(_ value: String) -> Date? {
+        fractionalSecondsFormatter.date(from: value) ?? wholeSecondsFormatter.date(from: value)
     }
 }
