@@ -4,7 +4,7 @@ import AppKit
 /// Translucent material backing for the menu bar popover. Rounds its own layer so
 /// the behind-window blur is masked to the popover shape rather than a square.
 struct GlassBackground: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .popover
+    var material: NSVisualEffectView.Material = .menu
     var cornerRadius: CGFloat = 13
 
     func makeNSView(context: Context) -> NSVisualEffectView {
