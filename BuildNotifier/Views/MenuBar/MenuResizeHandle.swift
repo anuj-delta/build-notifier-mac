@@ -20,7 +20,10 @@ struct MenuResizeHandle: View {
             .onHover { isHovered = $0 }
             .cursor(.resizeUpDown)
             .gesture(
-                DragGesture(minimumDistance: 1)
+                // Measured against the window, whose top edge is pinned. In the handle's own
+                // space the handle moves with the drag, which cancels most of each step and
+                // makes the resize stutter.
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { drag in
                         let start = startHeight ?? metrics.height
                         startHeight = start

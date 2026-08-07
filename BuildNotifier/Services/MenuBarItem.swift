@@ -14,6 +14,11 @@ final class MenuMetrics {
     private(set) var ceiling: CGFloat = MenuMetrics.defaultHeight
     private(set) var height: CGFloat
 
+    /// Resizes the window. Set by the window, called on every drag step so the panel and the
+    /// content it holds change size in the same turn - going through observation instead put
+    /// the window a frame behind the content and the drag stuttered.
+    var resizeWindow: ((CGFloat) -> Void)?
+
     init() {
         let saved = UserDefaults.standard.double(forKey: Self.key)
         height = saved > 0 ? saved : Self.defaultHeight
@@ -27,6 +32,7 @@ final class MenuMetrics {
 
     func resize(to height: CGFloat) {
         self.height = min(max(Self.leastHeight, height), ceiling)
+        resizeWindow?(self.height)
     }
 
     func save() {
@@ -73,7 +79,10 @@ final class MenuBarItem: NSObject {
 
         renderGlyph()
         watchVisibility()
-        trackHeight()
+        metrics.resizeWindow = { [weak self] height in
+            guard let self, panel.isVisible else { return }
+            panel.setGeometry(top: panelTop, height: height)
+        }
         Self.current = self
     }
 
@@ -133,25 +142,6 @@ final class MenuBarItem: NSObject {
         return origin
     }
 
-    /// Follows the height the resize handle writes, keeping the top edge pinned under the icon
-    /// so the panel grows downward. `withObservationTracking` is one-shot, so it re-arms.
-    private func trackHeight() {
-        withObservationTracking {
-            _ = metrics.height
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                self?.applyHeight()
-                self?.trackHeight()
-            }
-        }
-    }
-
-    private func applyHeight() {
-        guard panel.isVisible else { return }
-        panel.setContentSize(NSSize(width: panel.frame.width, height: metrics.height))
-        panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: panelTop - panel.frame.height))
-    }
-
     // MARK: - Dismissal
 
     /// A global monitor only sees events routed to *other* apps, so this closes the
@@ -197,7 +187,11 @@ private final class MenuPanel: NSPanel {
     private let hosting: NSViewController
 
     init<Content: View>(content: Content) {
-        hosting = NSHostingController(rootView: content)
+        let controller = NSHostingController(rootView: content)
+        // Otherwise the hosting controller pushes SwiftUI's ideal size onto the window while
+        // a drag is setting the window's size, and the two fight for every frame.
+        controller.sizingOptions = []
+        hosting = controller
         super.init(
             contentRect: NSRect(origin: .zero, size: NSSize(width: 100, height: 100)),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -218,9 +212,20 @@ private final class MenuPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
+    /// AppKit would otherwise pull the frame back onto the screen mid-drag, so the next step
+    /// would measure a frame we did not ask for and the resize would fight itself.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
+
     func fitContent() {
         let size = hosting.view.fittingSize
         guard size.width > 0, size.height > 0 else { return }
         setContentSize(size)
+    }
+
+    /// One call, so the panel never renders a frame where it has resized but not yet moved.
+    func setGeometry(top: CGFloat, height: CGFloat) {
+        setFrame(NSRect(x: frame.minX, y: top - height, width: frame.width, height: height), display: true)
     }
 }
