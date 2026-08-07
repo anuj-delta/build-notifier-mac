@@ -59,18 +59,19 @@ final class NotificationManager: NSObject, ObservableObject {
     func openSystemNotificationSettings() {
         let pane = "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
 
+        var candidates: [URL] = []
         if let bundleId = Bundle.main.bundleIdentifier,
-           let deepLink = URL(string: "\(pane)?id=\(bundleId)"),
-           NSWorkspace.shared.open(deepLink) {
-            return
+           let deepLink = URL(string: "\(pane)?id=\(bundleId)") {
+            candidates.append(deepLink)
         }
-        if let paneURL = URL(string: pane), NSWorkspace.shared.open(paneURL) {
-            return
+        if let paneURL = URL(string: pane) {
+            candidates.append(paneURL)
         }
         // The pane identifier is not public API; fall back to the app itself.
         if let settingsApp = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.systempreferences") {
-            NSWorkspace.shared.open(settingsApp)
+            candidates.append(settingsApp)
         }
+        ExternalLink.open(candidates)
     }
     
     // MARK: - Freshness
@@ -383,8 +384,8 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             }
             
             if let urlString = urlString, let url = URL(string: urlString) {
-                _ = await MainActor.run {
-                    NSWorkspace.shared.open(url)
+                await MainActor.run {
+                    ExternalLink.open(url)
                 }
             }
             

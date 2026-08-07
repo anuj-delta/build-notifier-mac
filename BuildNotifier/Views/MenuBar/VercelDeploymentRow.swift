@@ -112,9 +112,7 @@ struct VercelDeploymentRow: View {
     }
 
     private func open(_ urlString: String) {
-        if let url = URL(string: urlString) {
-            NSWorkspace.shared.open(url)
-        }
+        AppWindowManager.openFromMenu(urlString)
     }
 }
 
