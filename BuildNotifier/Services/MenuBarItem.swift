@@ -1,20 +1,45 @@
 import AppKit
 import SwiftUI
 
+/// How tall the menu is, and the most it may be on the screen it is opening on. The window
+/// knows which screen it is on, the content does not, so the window sets these and the
+/// content reads them. The height survives a relaunch, like any window frame.
+@Observable
+@MainActor
+final class MenuMetrics {
+    static let leastHeight: CGFloat = 280
+    private static let defaultHeight: CGFloat = 560
+    private static let key = "menuPanelHeight"
+
+    private(set) var ceiling: CGFloat = MenuMetrics.defaultHeight
+    private(set) var height: CGFloat
+
+    init() {
+        let saved = UserDefaults.standard.double(forKey: Self.key)
+        height = saved > 0 ? saved : Self.defaultHeight
+    }
+
+    /// Fits the chosen height to the room under the menu bar on the screen being opened on.
+    func fit(within room: CGFloat) {
+        ceiling = max(Self.leastHeight, room)
+        height = min(height, ceiling)
+    }
+
+    func resize(to height: CGFloat) {
+        self.height = min(max(Self.leastHeight, height), ceiling)
+    }
+
+    func save() {
+        UserDefaults.standard.set(height, forKey: Self.key)
+    }
+}
+
 /// The menu bar icon and the panel it opens.
 ///
 /// AppKit owns the status item rather than SwiftUI's `MenuBarExtra`, because that
 /// API terminates the process when macOS asks the item to hide - exit code 0, no
 /// crash log. Control Center hides an item whenever the app that launched it is
 /// denied under "Allow in the Menu Bar", so a menu bar app must survive it.
-/// How tall the menu content may grow. The window knows which screen it is on, the
-/// content does not, so the window owns this and the content reads it.
-@Observable
-@MainActor
-final class MenuMetrics {
-    var heightBudget: CGFloat = 560
-}
-
 @MainActor
 final class MenuBarItem: NSObject {
     static private(set) var current: MenuBarItem?
@@ -26,11 +51,11 @@ final class MenuBarItem: NSObject {
     private var outsideClicks: Any?
     private var visibility: NSKeyValueObservation?
     private var reasserted = false
+    private var panelTop: CGFloat = 0
 
     private let itemWidth: CGFloat = 24
     private let gap: CGFloat = 6
     private let screenInset: CGFloat = 8
-    private let maxHeightFraction: CGFloat = 0.5
 
     init(appState: AppState) {
         self.appState = appState
@@ -48,6 +73,7 @@ final class MenuBarItem: NSObject {
 
         renderGlyph()
         watchVisibility()
+        trackHeight()
         Self.current = self
     }
 
@@ -79,13 +105,12 @@ final class MenuBarItem: NSObject {
     private func open() {
         guard let button = item.button, let bar = button.window else { return }
         let visible = (bar.screen ?? NSScreen.main)?.visibleFrame
-
-        // The content asks for whatever height its list wants, so cap it and let the
-        // list scroll inside that.
-        metrics.heightBudget = (visible?.height ?? 800) * maxHeightFraction
-        panel.layoutIfNeeded()
-        panel.fitContent(maxHeight: metrics.heightBudget)
         let anchor = bar.convertToScreen(button.convert(button.bounds, to: nil))
+
+        panelTop = anchor.minY - gap
+        metrics.fit(within: panelTop - (visible?.minY ?? 0) - screenInset)
+        panel.layoutIfNeeded()
+        panel.fitContent()
         panel.setFrameOrigin(placement(under: anchor, within: visible))
         // A non-activating panel takes key input without pulling the app out of
         // .accessory, so opening the menu never steals focus from another app.
@@ -95,14 +120,36 @@ final class MenuBarItem: NSObject {
         appState.refreshNow()
     }
 
+    /// Hangs the panel from the icon's leading edge, the way macOS drops its own menus, and
+    /// keeps it on screen. Centring on the icon reads as misaligned once the panel is much
+    /// wider than the icon.
     private func placement(under anchor: NSRect, within visible: NSRect?) -> NSPoint {
         let size = panel.frame.size
-        var origin = NSPoint(x: anchor.midX - size.width / 2, y: anchor.minY - size.height - gap)
+        var origin = NSPoint(x: anchor.minX, y: panelTop - size.height)
 
         guard let visible else { return origin }
         origin.x = min(max(visible.minX + screenInset, origin.x), visible.maxX - size.width - screenInset)
         origin.y = max(visible.minY + screenInset, origin.y)
         return origin
+    }
+
+    /// Follows the height the resize handle writes, keeping the top edge pinned under the icon
+    /// so the panel grows downward. `withObservationTracking` is one-shot, so it re-arms.
+    private func trackHeight() {
+        withObservationTracking {
+            _ = metrics.height
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.applyHeight()
+                self?.trackHeight()
+            }
+        }
+    }
+
+    private func applyHeight() {
+        guard panel.isVisible else { return }
+        panel.setContentSize(NSSize(width: panel.frame.width, height: metrics.height))
+        panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: panelTop - panel.frame.height))
     }
 
     // MARK: - Dismissal
@@ -171,10 +218,9 @@ private final class MenuPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
-    func fitContent(maxHeight: CGFloat) {
-        var size = hosting.view.fittingSize
+    func fitContent() {
+        let size = hosting.view.fittingSize
         guard size.width > 0, size.height > 0 else { return }
-        size.height = min(size.height, maxHeight)
         setContentSize(size)
     }
 }

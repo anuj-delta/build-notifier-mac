@@ -2,16 +2,21 @@ import SwiftUI
 import AppKit
 
 extension View {
-    /// Shows the pointing-hand cursor while hovered. Uses the AppKit cursor stack
-    /// (`push`/`pop`) rather than `set()` so the cursor survives view redraws -
-    /// otherwise an animating sibling (e.g. the shimmer) resets it every frame and
-    /// the pointer flickers.
     func pointingHandCursor() -> some View {
-        modifier(PointingHandCursor())
+        cursor(.pointingHand)
+    }
+
+    /// Shows `cursor` while hovered. Uses the AppKit cursor stack (`push`/`pop`) rather
+    /// than `set()` so the cursor survives view redraws - otherwise an animating sibling
+    /// (e.g. the shimmer) resets it every frame and the pointer flickers.
+    func cursor(_ cursor: NSCursor) -> some View {
+        modifier(HoverCursor(cursor: cursor))
     }
 }
 
-private struct PointingHandCursor: ViewModifier {
+private struct HoverCursor: ViewModifier {
+    let cursor: NSCursor
+
     @State private var pushed = false
 
     func body(content: Content) -> some View {
@@ -19,7 +24,7 @@ private struct PointingHandCursor: ViewModifier {
             .onHover { hovering in
                 if hovering {
                     guard !pushed else { return }
-                    NSCursor.pointingHand.push()
+                    cursor.push()
                     pushed = true
                 } else {
                     guard pushed else { return }

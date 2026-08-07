@@ -150,7 +150,6 @@ private enum PendingMenuAction {
 
 struct MenuBarContentView: View {
     private let popoverWidth: CGFloat = 424
-    private let preferredHeight: CGFloat = 560
 
     @Environment(MenuMetrics.self) private var metrics
     @Bindable var appState: AppState
@@ -186,6 +185,8 @@ struct MenuBarContentView: View {
                 }
 
                 footer
+
+                MenuResizeHandle()
             }
             .background(GlassBackground(cornerRadius: AppChrome.radiusWindow))
             .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusWindow, style: .continuous))
@@ -219,8 +220,7 @@ struct MenuBarContentView: View {
                 .zIndex(2)
             }
         }
-        .frame(width: popoverWidth)
-        .frame(minHeight: min(preferredHeight, metrics.heightBudget), maxHeight: metrics.heightBudget)
+        .frame(width: popoverWidth, height: metrics.height)
         .background {
             Button(action: openSearch) { EmptyView() }
                 .keyboardShortcut("s", modifiers: [])
