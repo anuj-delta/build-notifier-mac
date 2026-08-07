@@ -73,36 +73,41 @@ enum AppWindowManager {
         window.contentViewController = NSHostingController(rootView: content)
         if let size { window.setContentSize(size) }
         window.center()
-        // Restores the frame saved by the SwiftUI scenes these windows replaced.
+        _ = window.setFrameUsingName(autosaveName)
         window.setFrameAutosaveName(autosaveName)
+        _ = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { syncDockIcon(closing: window) }
+        }
         return window
     }
 
     private static func present(_ window: NSWindow) {
         window.makeKeyAndOrderFront(nil)
+        syncDockIcon()
         NSApp.activate(ignoringOtherApps: true)
     }
 
     // MARK: - Dock icon lifecycle
 
-    private static var openAppWindowCount = 0
-
-    /// The app runs as a menu-bar accessory (no dock icon). While a real window like Settings
-    /// or onboarding is open, flip to a regular app so it earns a dock icon and normal window
-    /// behaviour, then drop back to accessory once the last such window closes. Reference
-    /// counted so both windows can be open at once without the icon flickering.
-    static func appWindowAppeared() {
-        openAppWindowCount += 1
-        if NSApp.activationPolicy() != .regular {
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate(ignoringOtherApps: true)
+    /// The app runs as a menu-bar accessory with no dock icon. While a real window is up it
+    /// becomes a regular app, so it earns a dock icon and normal window behaviour, and drops
+    /// back once the last one closes.
+    ///
+    /// Derived from the windows rather than counted on the way in and out: these windows are
+    /// reused, and `close()` leaves their SwiftUI content mounted, so view lifecycle never
+    /// reports the close and the icon used to stay for the rest of the session. `closing` is
+    /// the window inside `willClose`, which still reads as visible.
+    private static func syncDockIcon(closing: NSWindow? = nil) {
+        let wantsDockIcon = [settings, setup].contains { window in
+            guard let window, window !== closing else { return false }
+            return window.isVisible
         }
-    }
-
-    static func appWindowDisappeared() {
-        openAppWindowCount = max(0, openAppWindowCount - 1)
-        if openAppWindowCount == 0 {
-            NSApp.setActivationPolicy(.accessory)
-        }
+        let policy: NSApplication.ActivationPolicy = wantsDockIcon ? .regular : .accessory
+        guard NSApp.activationPolicy() != policy else { return }
+        NSApp.setActivationPolicy(policy)
     }
 }

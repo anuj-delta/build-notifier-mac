@@ -70,12 +70,6 @@ struct SettingsView: View {
         .ignoresSafeArea()
         .background(MenuWindowConfigurator())
         .frame(minWidth: 820, minHeight: 560)
-        .onAppear {
-            AppWindowManager.appWindowAppeared()
-        }
-        .onDisappear {
-            AppWindowManager.appWindowDisappeared()
-        }
         .sheet(isPresented: $showingVercelOnboarding) {
             VercelOnboardingView()
                 .environment(appState)

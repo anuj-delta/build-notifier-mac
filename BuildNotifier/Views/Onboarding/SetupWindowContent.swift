@@ -20,7 +20,5 @@ struct SetupWindowContent: View {
                     .onAppear { AppWindowManager.closeSetup() }
             }
         }
-        .onAppear { AppWindowManager.appWindowAppeared() }
-        .onDisappear { AppWindowManager.appWindowDisappeared() }
     }
 }
