@@ -325,14 +325,15 @@ final class BuildPoller: ObservableObject {
             appState.deployingBranchBySlugByEnv[env] = bySlug.isEmpty ? nil : bySlug
         }
         appState.refreshDeploySpinner()
+        appState.regroupBuilds()
 
         // Resolve the authoritative v2 status for each on-screen row's workflow. v1.1 build
         // status lags v2, so a finished workflow can still report a running job for a short
         // window; the row trusts v2 when available and falls back to v1.1 otherwise.
         let representativeWorkflowIds = Set(
             appState.groupedBuilds
-                .flatMap { $0.builds.values }
-                .compactMap { $0.first?.workflows?.workflowId }
+                .flatMap(\.branches)
+                .compactMap { $0.build.workflows?.workflowId }
         )
         let resolvedStatuses = await resolveWorkflowStatuses(workflowIds: representativeWorkflowIds)
         // Keep the last-known status for an on-screen workflow whose v2 fetch failed this

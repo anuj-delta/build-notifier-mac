@@ -50,7 +50,7 @@ struct DeployBadge: Identifiable, Equatable {
 
 struct ProjectSection: View {
     let project: WatchedProject
-    let buildsByBranch: [String: [Build]]
+    let branches: [BranchBuild]
     let deployedBranchesByEnv: [DeployEnvironment: String]
     let deployingBranchesByEnv: [DeployEnvironment: String]
     let workflowStatusByWorkflowId: [String: String]
@@ -72,7 +72,7 @@ struct ProjectSection: View {
     @State private var isDeployHovered = false
 
     private var repoUrl: String? {
-        buildsByBranch.values.first?.first?.vcsUrl
+        branches.first?.build.vcsUrl
     }
 
     private func repositoryPath(highlighted: Bool) -> some View {
@@ -185,27 +185,27 @@ struct ProjectSection: View {
 
             if isExpanded {
                 VStack(spacing: 2) {
-                    ForEach(Array(sortedBranches.enumerated()), id: \.element) { index, branch in
-                        if let builds = buildsByBranch[branch], let build = builds.first {
-                            let workflowId = build.workflows?.workflowId
-                            BuildRow(
-                                build: build,
-                                resolvedWorkflowStatus: workflowId.flatMap { workflowStatusByWorkflowId[$0] },
-                                canAutoApprove: workflowId.map { approvalCapableWorkflowIds.contains($0) } ?? false,
-                                isAutoApproveArmed: workflowId.map { armedAutoApprovalWorkflowIds.contains($0) } ?? false,
-                                deployBadges: deployBadges(for: build),
-                                onRetry: { onRetry(build) },
-                                onCancel: { onCancel(build) },
-                                onAutoApprove: { onArmAutoApprove(build) },
-                                onCancelAutoApprove: {
-                                    if let workflowId = build.workflows?.workflowId {
-                                        onCancelAutoApprove(workflowId)
-                                    }
-                                },
-                                onOpen: { onOpen(build) },
-                                onOpenPR: { onOpenPR(build) }
-                            )
-                        }
+                    ForEach(branches) { item in
+                        let build = item.build
+                        let workflowId = build.workflows?.workflowId
+                        BuildRow(
+                            build: build,
+                            span: item.span,
+                            resolvedWorkflowStatus: workflowId.flatMap { workflowStatusByWorkflowId[$0] },
+                            canAutoApprove: workflowId.map { approvalCapableWorkflowIds.contains($0) } ?? false,
+                            isAutoApproveArmed: workflowId.map { armedAutoApprovalWorkflowIds.contains($0) } ?? false,
+                            deployBadges: deployBadges(for: build),
+                            onRetry: { onRetry(build) },
+                            onCancel: { onCancel(build) },
+                            onAutoApprove: { onArmAutoApprove(build) },
+                            onCancelAutoApprove: {
+                                if let workflowId = build.workflows?.workflowId {
+                                    onCancelAutoApprove(workflowId)
+                                }
+                            },
+                            onOpen: { onOpen(build) },
+                            onOpenPR: { onOpenPR(build) }
+                        )
                     }
                 }
                 .padding(.bottom, 4)
@@ -223,20 +223,13 @@ struct ProjectSection: View {
             return nil
         }
     }
-
-    private var sortedBranches: [String] {
-        buildsByBranch.keys.sorted { b1, b2 in
-            let date1 = buildsByBranch[b1]?.compactMap { $0.activityDate }.max() ?? .distantPast
-            let date2 = buildsByBranch[b2]?.compactMap { $0.activityDate }.max() ?? .distantPast
-            return date1 > date2
-        }
-    }
 }
 
 struct BuildRow: View {
     private let trailingActionRowHeight: CGFloat = 14
 
     let build: Build
+    let span: WorkflowSpan
     let resolvedWorkflowStatus: String?
     let canAutoApprove: Bool
     let isAutoApproveArmed: Bool
@@ -307,7 +300,7 @@ struct BuildRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .trailing, spacing: 6) {
-                    Text(build.relativeTime)
+                    Text(span.label(inProgress: status.isInProgress))
                         .font(Typography.rowMeta)
                         .foregroundStyle(AppChrome.textMuted)
                         .monospacedDigit()

@@ -55,7 +55,7 @@ private struct MenuBarSnapshot {
     let activeTab: MenuBarTab
     let hasSearchQuery: Bool
     let filteredPendingApprovals: [PendingApproval]
-    let filteredGroupedBuilds: [(project: WatchedProject, builds: [String: [Build]])]
+    let filteredGroupedBuilds: [ProjectBuilds]
     let filteredVercelProjects: [FilteredVercelProject]
     let circleCICount: Int
     let vercelCount: Int
@@ -493,16 +493,16 @@ struct MenuBarContentView: View {
             filteredPendingApprovals = appState.pendingApprovals
         }
 
-        let filteredGroupedBuilds: [(project: WatchedProject, builds: [String: [Build]])]
+        let filteredGroupedBuilds: [ProjectBuilds]
         if hasSearchQuery {
             filteredGroupedBuilds = groupedBuilds.compactMap { item in
-                let filtered = item.builds.filter { branch, builds in
-                    branchMatchesSearch(branch, searchText: normalizedSearchText) ||
-                    builds.contains(where: { branchMatchesSearch($0.branch, searchText: normalizedSearchText) })
+                let filtered = item.branches.filter {
+                    branchMatchesSearch($0.branch, searchText: normalizedSearchText) ||
+                    branchMatchesSearch($0.build.branch, searchText: normalizedSearchText)
                 }
 
                 guard !filtered.isEmpty else { return nil }
-                return (project: item.project, builds: filtered)
+                return ProjectBuilds(project: item.project, branches: filtered)
             }
         } else {
             filteredGroupedBuilds = groupedBuilds
@@ -588,7 +588,7 @@ struct MenuBarContentView: View {
             ForEach(snapshot.filteredGroupedBuilds, id: \.project.id) { item in
                 ProjectSection(
                     project: item.project,
-                    buildsByBranch: item.builds,
+                    branches: item.branches,
                     deployedBranchesByEnv: appState.deployedBranchesByEnv(forSlug: item.project.slug),
                     deployingBranchesByEnv: appState.deployingBranchesByEnv(forSlug: item.project.slug),
                     workflowStatusByWorkflowId: appState.workflowStatusByWorkflowId,
@@ -681,7 +681,7 @@ struct MenuBarContentView: View {
             ForEach(snapshot.filteredGroupedBuilds, id: \.project.id) { item in
                 ProjectSection(
                     project: item.project,
-                    buildsByBranch: item.builds,
+                    branches: item.branches,
                     deployedBranchesByEnv: appState.deployedBranchesByEnv(forSlug: item.project.slug),
                     deployingBranchesByEnv: appState.deployingBranchesByEnv(forSlug: item.project.slug),
                     workflowStatusByWorkflowId: appState.workflowStatusByWorkflowId,

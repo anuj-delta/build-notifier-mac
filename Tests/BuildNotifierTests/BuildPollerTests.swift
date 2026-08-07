@@ -681,7 +681,7 @@ final class BuildPollerTests: XCTestCase {
 
         XCTAssertEqual(appState.deployedBranch(forSlug: Self.slug, env: .sigma), "INFRA-782/sigma-chatbot")
 
-        let branches = Set((appState.groupedBuilds.first?.builds ?? [:]).keys)
+        let branches = Set((appState.groupedBuilds.first?.branches ?? []).map(\.branch))
         XCTAssertTrue(branches.contains("INFRA-782/sigma-chatbot"))
         XCTAssertEqual(branches.count, 6)
     }

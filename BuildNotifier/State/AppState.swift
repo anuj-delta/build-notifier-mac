@@ -212,26 +212,33 @@ final class AppState {
 
     static let maxBranchesPerProject = 5
 
-    var groupedBuilds: [(project: WatchedProject, builds: [String: [Build]])] {
-        var result: [(project: WatchedProject, builds: [String: [Build]])] = []
-        
+    /// Branches to show per project, newest first, each with the build to display.
+    /// Stored rather than computed: the menu rebuilds this on every redraw otherwise,
+    /// including on every keystroke in its search field.
+    private(set) var groupedBuilds: [ProjectBuilds] = []
+
+    func regroupBuilds() {
+        var result: [(group: ProjectBuilds, latest: Date)] = []
+
         for project in watchedProjects {
             guard let builds = buildsByProject[project.slug] else { continue }
-            
-            // Group builds by branch
+
             var buildsByBranch: [String: [Build]] = [:]
             for build in builds {
                 let branch = build.branch ?? "unknown"
                 buildsByBranch[branch, default: []].append(build)
             }
-            
+
             // Keep the most recently active branches so feature branches surface
             // alongside main/develop instead of being crowded out. Rank and pick
             // by activityDate rather than trusting the API's response order, so the
             // right branch/build wins even if buildsByProject is ever reordered.
+            let latestByBranch = buildsByBranch.mapValues { builds in
+                builds.compactMap(\.activityDate).max() ?? .distantPast
+            }
             let branchesByRecency = buildsByBranch.keys.sorted { b1, b2 in
-                let d1 = buildsByBranch[b1]?.compactMap { $0.activityDate }.max() ?? .distantPast
-                let d2 = buildsByBranch[b2]?.compactMap { $0.activityDate }.max() ?? .distantPast
+                let d1 = latestByBranch[b1] ?? .distantPast
+                let d2 = latestByBranch[b2] ?? .distantPast
                 if d1 != d2 { return d1 > d2 }
                 return b1 < b2
             }
@@ -250,35 +257,38 @@ final class AppState {
                 selectedBranches.append(branch)
             }
 
-            var sortedBuildsByBranch: [String: [Build]] = [:]
-            for branch in selectedBranches {
-                if let latestBuild = buildsByBranch[branch]?.max(by: {
-                    ($0.activityDate ?? .distantPast) < ($1.activityDate ?? .distantPast)
-                }) {
-                    sortedBuildsByBranch[branch] = [latestBuild]
-                }
+            let branches: [BranchBuild] = selectedBranches.compactMap { branch in
+                guard let jobs = buildsByBranch[branch],
+                      let latest = jobs.max(by: {
+                          ($0.activityDate ?? .distantPast) < ($1.activityDate ?? .distantPast)
+                      }) else { return nil }
+                return BranchBuild(
+                    branch: branch,
+                    build: latest,
+                    span: WorkflowSpan(jobs: siblings(of: latest, in: jobs))
+                )
             }
-            
-            result.append((project: project, builds: sortedBuildsByBranch))
+
+            result.append((
+                group: ProjectBuilds(project: project, branches: branches),
+                latest: latestByBranch.values.max() ?? .distantPast
+            ))
         }
-        
+
         // Sort projects by recent activity (latest build timestamp), then name.
-        return result.sorted { lhs, rhs in
-            let lhsLatest = buildsByProject[lhs.project.slug]?.compactMap { $0.activityDate }.max()
-            let rhsLatest = buildsByProject[rhs.project.slug]?.compactMap { $0.activityDate }.max()
-            
-            switch (lhsLatest, rhsLatest) {
-            case let (l?, r?):
-                if l != r { return l > r }
-                return lhs.project.displayName.lowercased() < rhs.project.displayName.lowercased()
-            case (_?, nil):
-                return true
-            case (nil, _?):
-                return false
-            case (nil, nil):
-                return lhs.project.displayName.lowercased() < rhs.project.displayName.lowercased()
+        groupedBuilds = result
+            .sorted { lhs, rhs in
+                if lhs.latest != rhs.latest { return lhs.latest > rhs.latest }
+                return lhs.group.project.displayName.lowercased() < rhs.group.project.displayName.lowercased()
             }
-        }
+            .map(\.group)
+    }
+
+    /// The other jobs of `build`'s workflow. A build with no workflow id stands alone rather
+    /// than matching every other id-less build on the branch.
+    private func siblings(of build: Build, in jobs: [Build]) -> [Build] {
+        guard let id = build.workflows?.workflowId else { return [build] }
+        return jobs.filter { $0.workflows?.workflowId == id }
     }
 
     /// The branch currently live on each deploy environment per project, resolved during
@@ -404,17 +414,18 @@ final class AppState {
     
     func removeFromWatchlist(_ project: WatchedProject) {
         preferences.watchedProjects.removeAll { $0.id == project.id }
-        preferences.save()
+        savePreferences()
     }
-    
+
     func updateWatchedProject(_ project: WatchedProject) {
         if let index = preferences.watchedProjects.firstIndex(where: { $0.id == project.id }) {
             preferences.watchedProjects[index] = project
-            preferences.save()
+            savePreferences()
         }
     }
     
     func startPolling() {
+        regroupBuilds()
         poller.startPolling(interval: TimeInterval(preferences.pollingIntervalSeconds))
         autoApprovalPoller.startPolling(interval: 120)
     }
@@ -630,6 +641,7 @@ final class AppState {
         armedAutoApprovals = [:]
         preferences.watchedProjects = []
         preferences.save()
+        regroupBuilds()
         currentScreen = .onboarding
     }
     
@@ -647,6 +659,7 @@ final class AppState {
         workflowApprovalSupport = [:]
         armedAutoApprovals = [:]
         // Note: watchedProjects is preserved
+        regroupBuilds()
         currentScreen = .onboarding
     }
     
@@ -658,6 +671,7 @@ final class AppState {
         }
         // React immediately when the deploy-loader toggle changes.
         refreshDeploySpinner()
+        regroupBuilds()
     }
     
     // MARK: - Vercel Actions
