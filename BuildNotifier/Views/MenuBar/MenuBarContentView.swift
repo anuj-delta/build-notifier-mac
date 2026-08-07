@@ -188,13 +188,6 @@ struct MenuBarContentView: View {
 
                 MenuResizeHandle()
             }
-            .background(GlassBackground(cornerRadius: AppChrome.radiusWindow))
-            .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusWindow, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: AppChrome.radiusWindow, style: .continuous)
-                    .strokeBorder(AppChrome.glassStroke, lineWidth: 1)
-            }
-            .background(MenuWindowConfigurator())
 
             if let pendingAction {
                 PendingActionOverlay(

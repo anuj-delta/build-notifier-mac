@@ -31,6 +31,15 @@ struct MenuBarRoot: View {
                 MenuBarContentView(appState: appState)
             }
         }
+        // The panel itself is transparent, so the chrome belongs here rather than on the
+        // main screen alone - the loading and setup cards used to render onto the desktop.
+        .background(GlassBackground(cornerRadius: AppChrome.radiusWindow))
+        .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusWindow, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: AppChrome.radiusWindow, style: .continuous)
+                .strokeBorder(AppChrome.glassStroke, lineWidth: 1)
+        }
+        .background(MenuWindowConfigurator())
     }
 
     private func openSetup() {
