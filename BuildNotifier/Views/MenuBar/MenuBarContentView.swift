@@ -150,9 +150,9 @@ private enum PendingMenuAction {
 
 struct MenuBarContentView: View {
     private let popoverWidth: CGFloat = 424
-    private let buildsListMaxHeight: CGFloat = 1120
-    private let buildsListMinHeight: CGFloat = 440
+    private let preferredHeight: CGFloat = 560
 
+    @Environment(MenuMetrics.self) private var metrics
     @Bindable var appState: AppState
     @State private var isRefreshing = false
     @State private var selectedTab: MenuBarTab = .overview
@@ -161,7 +161,6 @@ struct MenuBarContentView: View {
     @State private var pendingAction: PendingMenuAction?
     @State private var deployTarget: WatchedProject?
     @FocusState private var isSearchFocused: Bool
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let snapshot = makeSnapshot()
@@ -221,6 +220,7 @@ struct MenuBarContentView: View {
             }
         }
         .frame(width: popoverWidth)
+        .frame(minHeight: min(preferredHeight, metrics.heightBudget), maxHeight: metrics.heightBudget)
         .background {
             Button(action: openSearch) { EmptyView() }
                 .keyboardShortcut("s", modifiers: [])
@@ -238,7 +238,6 @@ struct MenuBarContentView: View {
         .animation(Motion.state, value: deployTarget != nil)
         .onAppear {
             selectDefaultTabIfNeeded(tabs: snapshot.availableTabs)
-            appState.refreshNow()
         }
     }
 
@@ -436,7 +435,7 @@ struct MenuBarContentView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
         }
-        .frame(minHeight: buildsListMinHeight, maxHeight: buildsListMaxHeight)
+        .frame(maxHeight: .infinity)
     }
 
     private var footer: some View {
@@ -812,8 +811,7 @@ struct MenuBarContentView: View {
 
     private func openSettings() {
         AppWindowManager.dismissActiveMenuBarWindow {
-            openWindow(id: "settings")
-            NSApplication.shared.activate(ignoringOtherApps: true)
+            AppWindowManager.openSettings(appState)
         }
     }
 

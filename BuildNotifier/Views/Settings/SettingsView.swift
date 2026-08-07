@@ -41,8 +41,6 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @Bindable var appState: AppState
     @ObservedObject private var notificationManager = NotificationManager.shared
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.openWindow) private var openWindow
 
     @State private var selectedTab: SettingsTab = .general
     @State private var showingVercelOnboarding = false
@@ -626,9 +624,8 @@ struct SettingsView: View {
             ) {
                 Button("Change Token") {
                     appState.changeToken()
-                    dismiss()
-                    openWindow(id: "onboarding")
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    AppWindowManager.closeSettings()
+                    AppWindowManager.openSetup(appState)
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -641,7 +638,7 @@ struct SettingsView: View {
             ) {
                 Button("Disconnect", role: .destructive) {
                     appState.signOut()
-                    dismiss()
+                    AppWindowManager.closeSettings()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -655,9 +652,8 @@ struct SettingsView: View {
                     buttonTitle: "Open CircleCI Setup",
                     action: {
                         appState.currentScreen = .onboarding
-                        dismiss()
-                        openWindow(id: "onboarding")
-                        NSApplication.shared.activate(ignoringOtherApps: true)
+                        AppWindowManager.closeSettings()
+                        AppWindowManager.openSetup(appState)
                     }
                 )
 
@@ -792,7 +788,7 @@ struct SettingsView: View {
 
     private func presentCircleCIProjectSelection(refreshProjects: Bool) {
         appState.showingSettings = false
-        dismiss()
+        AppWindowManager.closeSettings()
         appState.currentScreen = .projectSelection
         appState.stopPolling()
 
@@ -800,8 +796,7 @@ struct SettingsView: View {
             if refreshProjects || appState.projects.isEmpty {
                 await appState.loadProjects()
             }
-            openWindow(id: "onboarding")
-            NSApplication.shared.activate(ignoringOtherApps: true)
+            AppWindowManager.openSetup(appState)
         }
     }
 }

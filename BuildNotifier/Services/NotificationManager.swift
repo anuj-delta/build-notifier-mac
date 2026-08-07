@@ -245,6 +245,24 @@ final class NotificationManager: NSObject, ObservableObject {
         UNUserNotificationCenter.current().add(request)
     }
     
+    func sendMenuBarHiddenNotification() {
+        guard isAuthorized else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "⚠️ Menu bar icon hidden"
+        content.subtitle = "Build Notifier"
+        content.body = "macOS is hiding the icon. Turn Build Notifier on under Control Center > Allow in the Menu Bar."
+        content.userInfo = ["type": "menuBarHidden"]
+
+        let request = UNNotificationRequest(
+            identifier: "menu-bar-hidden",
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request)
+    }
+
     func sendTestNotification() {
         Task {
             // The test exists to verify delivery, so never trust cached state.
