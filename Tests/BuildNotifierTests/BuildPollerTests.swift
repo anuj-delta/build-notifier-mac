@@ -25,7 +25,8 @@ final class BuildPollerTests: XCTestCase {
             fetchWorkflowJobs: { _ in [Self.successJob] },
             sendBuildSuccessNotification: { build, _ in
                 successNotifications.append(build)
-            }
+            },
+            now: { Self.justAfterFixtures }
         )
         let appState = makeAppState(poller: poller, followMode: .all)
 
@@ -73,7 +74,8 @@ final class BuildPollerTests: XCTestCase {
             },
             sendBuildSuccessNotification: { build, _ in
                 successNotifications.append(build)
-            }
+            },
+            now: { Self.justAfterFixtures }
         )
         let appState = makeAppState(poller: poller, followMode: .all)
 
@@ -117,7 +119,8 @@ final class BuildPollerTests: XCTestCase {
             fetchWorkflowJobs: { _ in jobsAreRunning ? [Self.runningJob] : [Self.successJob] },
             sendBuildSuccessNotification: { build, _ in
                 successNotifications.append(build)
-            }
+            },
+            now: { Self.justAfterFixtures }
         )
         let appState = makeAppState(poller: poller, followMode: .all)
 
@@ -142,6 +145,48 @@ final class BuildPollerTests: XCTestCase {
 
         XCTAssertNotNil(appState.buildsByProject["delta-exchange/api-console"])
         XCTAssertEqual(successNotifications.map(\.buildNum), [540])
+    }
+
+    func testStaleSuccessIsNotAnnouncedButIsStillMarkedNotified() async {
+        var jobsAreRunning = true
+        var currentBuilds = [
+            makeBuild(
+                buildNum: 540,
+                branch: "main",
+                committerName: "Test Author",
+                committerEmail: "author@example.test",
+                workflowId: "wf-running",
+                status: "running"
+            )
+        ]
+        var successNotifications: [Build] = []
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in currentBuilds },
+            fetchWorkflowJobs: { _ in jobsAreRunning ? [Self.runningJob] : [Self.successJob] },
+            sendBuildSuccessNotification: { build, _ in
+                successNotifications.append(build)
+            },
+            now: { Self.longAfterFixtures }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        currentBuilds = [
+            makeBuild(
+                buildNum: 540,
+                branch: "main",
+                committerName: "Test Author",
+                committerEmail: "author@example.test",
+                workflowId: "wf-running",
+                status: "success"
+            )
+        ]
+        jobsAreRunning = false
+        await poller.checkNow()
+
+        XCTAssertTrue(successNotifications.isEmpty)
+        XCTAssertTrue(appState.notifiedSuccessWorkflows.contains("wf-running"))
     }
 
     func testMineModePreservesPreviouslyVisibleWorkflowWhenActorLookupBecomesUnavailable() async throws {
@@ -815,6 +860,11 @@ final class BuildPollerTests: XCTestCase {
         ]
         return appState
     }
+
+    /// `makeBuild` stamps a fixed build time, so pin the clock just after it to keep the
+    /// fixtures inside the freshness window.
+    private static let justAfterFixtures = ISO8601DateFormatter().date(from: "2026-03-24T10:06:00Z")!
+    private static let longAfterFixtures = ISO8601DateFormatter().date(from: "2026-03-24T12:00:00Z")!
 
     private func makeBuild(
         buildNum: Int,

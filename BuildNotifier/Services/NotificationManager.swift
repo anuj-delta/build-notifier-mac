@@ -73,6 +73,18 @@ final class NotificationManager: NSObject, ObservableObject {
         }
     }
     
+    // MARK: - Freshness
+
+    /// Events older than this are history, not news.
+    static let freshnessWindow: TimeInterval = 5 * 60
+
+    /// True when `date` is recent enough to announce. A missing date can't be judged,
+    /// so it passes.
+    static func isFresh(_ date: Date?, now: Date) -> Bool {
+        guard let date else { return true }
+        return now.timeIntervalSince(date) <= freshnessWindow
+    }
+
     // MARK: - Send Notifications
 
     /// Appends the commit/PR author to a message body, e.g. "Ship it · by anuj-sharma".

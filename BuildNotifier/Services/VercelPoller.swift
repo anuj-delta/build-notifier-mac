@@ -15,14 +15,17 @@ final class VercelPoller: ObservableObject {
     private let fetchDeployments: (String, String?, Int) async throws -> [VercelDeployment]
     private let sendDeploymentReadyNotification: (VercelDeployment, Bool) -> Void
     private let sendDeploymentErrorNotification: (VercelDeployment, Bool) -> Void
+    private let now: () -> Date
     
     weak var appState: AppState?
     
     init(
         fetchDeployments: ((String, String?, Int) async throws -> [VercelDeployment])? = nil,
         sendDeploymentReadyNotification: ((VercelDeployment, Bool) -> Void)? = nil,
-        sendDeploymentErrorNotification: ((VercelDeployment, Bool) -> Void)? = nil
+        sendDeploymentErrorNotification: ((VercelDeployment, Bool) -> Void)? = nil,
+        now: @escaping () -> Date = { Date() }
     ) {
+        self.now = now
         self.fetchDeployments = fetchDeployments ?? { projectId, teamId, limit in
             try await VercelAPI.shared.getDeployments(
                 projectId: projectId,
@@ -191,11 +194,15 @@ final class VercelPoller: ObservableObject {
                 let notificationKey = "\(deployment.uid)-\(currentStatus.rawValue)"
                 if vercelNotificationsEnabled, isNewOrChanged,
                    !newNotifiedDeployments.contains(notificationKey) {
+                    // A change we watched happen is news whatever the clock says. Vercel
+                    // reports no "errored at", so a failure only carries its creation time.
+                    let isNews = previousDeployment != nil
+                        || NotificationManager.isFresh(deployment.stateChangeDate, now: now())
                     if currentStatus.isSuccess && preferences.notifyOnDeploymentReady {
-                        sendDeploymentReadyNotification(deployment, soundEnabled)
+                        if isNews { sendDeploymentReadyNotification(deployment, soundEnabled) }
                         newNotifiedDeployments.insert(notificationKey)
                     } else if currentStatus.isFailure && preferences.notifyOnDeploymentError {
-                        sendDeploymentErrorNotification(deployment, soundEnabled)
+                        if isNews { sendDeploymentErrorNotification(deployment, soundEnabled) }
                         newNotifiedDeployments.insert(notificationKey)
                     }
                 }
