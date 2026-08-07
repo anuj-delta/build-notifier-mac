@@ -4,344 +4,193 @@ import Security
 // MARK: - Keychain Service
 
 enum KeychainError: Error, LocalizedError {
-    case duplicateItem
     case itemNotFound
-    case unexpectedStatus(OSStatus)
     case invalidData
-    
+
     var errorDescription: String? {
         switch self {
-        case .duplicateItem:
-            return "Item already exists in keychain"
         case .itemNotFound:
             return "Item not found in keychain"
-        case .unexpectedStatus(let status):
-            return "Keychain error: \(status)"
         case .invalidData:
             return "Invalid data in keychain"
         }
     }
 }
 
+/// Stores API tokens in the Keychain, falling back to an owner-only file when the Keychain
+/// refuses. Ad-hoc re-signing changes the code identity, which can lock the app out of its
+/// own Keychain items, and the app must keep working when that happens.
 final class KeychainService {
     static let shared = KeychainService()
-    
+
     private let service = "com.buildnotifier.circleci"
-    private let account = "api_token"
-    private let vercelAccount = "vercel_token"
-    
-    // Fallback key for UserDefaults (used when keychain access fails due to code signing)
-    private let fallbackKey = "circleci_token_fallback"
-    private let vercelFallbackKey = "vercel_token_fallback"
-    
-    // Persist across rebuilds/reinstalls:
-    // - `suiteDefaults`: stable domain independent of bundle ID
-    // - `standardDefaults`: normal app defaults (still useful when installed in /Applications)
-    private let suiteDefaults = UserDefaults(suiteName: "buildnotifier.circleci.shared") ?? .standard
-    private let standardDefaults = UserDefaults.standard
-    private let legacySuiteDefaults = UserDefaults(suiteName: "group.buildnotifier.circleci.shared")
-    
-    // This app is distributed as an ad-hoc signed build in development/internal use.
-    // Re-signing changes the code identity and causes repeated Keychain access prompts,
-    // so token persistence intentionally relies on stable UserDefaults storage instead.
-    private let usesKeychain = false
-    
+
+    private enum Account: String {
+        case circleCI = "api_token"
+        case vercel = "vercel_token"
+
+        /// Where tokens lived before they moved out of UserDefaults. Read once, then erased.
+        var plaintextKey: String {
+            switch self {
+            case .circleCI: return "circleci_token_fallback"
+            case .vercel: return "vercel_token_fallback"
+            }
+        }
+    }
+
     private init() {}
-    
-    func maskedCircleCIToken() -> String? {
-        maskedToken(for: fallbackKey)
-    }
-    
-    func maskedVercelToken() -> String? {
-        maskedToken(for: vercelFallbackKey)
-    }
-    
-    // MARK: - Save Token
-    
-    func saveToken(_ token: String) throws {
-        guard let data = token.data(using: .utf8) else {
-            throw KeychainError.invalidData
+
+    // MARK: - CircleCI
+
+    func saveToken(_ token: String) throws { try save(token, for: .circleCI) }
+    func getToken() throws -> String { try read(.circleCI) }
+    func deleteToken() { delete(.circleCI) }
+    func hasToken() -> Bool { (try? read(.circleCI)) != nil }
+    func maskedCircleCIToken() -> String? { masked(.circleCI) }
+
+    // MARK: - Vercel
+
+    func saveVercelToken(_ token: String) throws { try save(token, for: .vercel) }
+    func getVercelToken() throws -> String { try read(.vercel) }
+    func deleteVercelToken() { delete(.vercel) }
+    func hasVercelToken() -> Bool { (try? read(.vercel)) != nil }
+    func maskedVercelToken() -> String? { masked(.vercel) }
+
+    // MARK: - Storage
+
+    private func save(_ token: String, for account: Account) throws {
+        guard let data = token.data(using: .utf8) else { throw KeychainError.invalidData }
+
+        if writeToKeychain(data, for: account) {
+            removeFile(for: account)
+        } else {
+            try writeFile(data, for: account)
         }
-        
-        // Always save to UserDefaults fallbacks first (avoids keychain prompts & signature issues)
-        suiteDefaults.set(token, forKey: fallbackKey)
-        standardDefaults.set(token, forKey: fallbackKey)
-        suiteDefaults.synchronize()
-        standardDefaults.synchronize()
-        
-        guard usesKeychain else { return }
-        
-        // Delete existing keychain item (but NOT the UserDefaults fallback)
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
-        SecItemDelete(deleteQuery as CFDictionary)
-        
-        // Try to save to keychain (best-effort)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
-        ]
-        
-        let status = SecItemAdd(query as CFDictionary, nil)
-        if status != errSecSuccess {
-            // Don't throw - fallbacks already persisted
-            print("[KeychainService] Keychain save failed: \(status); using UserDefaults fallback")
-        }
+        erasePlaintext(for: account)
     }
-    
-    // MARK: - Get Token
-    
-    func getToken() throws -> String {
-        // Prefer stable app storage to avoid Keychain prompts for ad-hoc signed builds.
-        if let token = suiteDefaults.string(forKey: fallbackKey), !token.isEmpty {
+
+    private func read(_ account: Account) throws -> String {
+        // A token in the clear is the one the app has been running on, so it wins over any
+        // Keychain item left by an older build. Moved into place and erased on sight.
+        if let token = plaintextToken(for: account) {
+            try? save(token, for: account)
             return token
         }
-        if let legacy = legacySuiteDefaults?.string(forKey: fallbackKey), !legacy.isEmpty {
-            // Migrate legacy suite -> current
-            suiteDefaults.set(legacy, forKey: fallbackKey)
-            standardDefaults.set(legacy, forKey: fallbackKey)
-            suiteDefaults.synchronize()
-            standardDefaults.synchronize()
-            return legacy
-        }
-        if let token = standardDefaults.string(forKey: fallbackKey), !token.isEmpty {
-            // Ensure suite has a copy
-            suiteDefaults.set(token, forKey: fallbackKey)
-            suiteDefaults.synchronize()
-            return token
-        }
-        
-        guard usesKeychain else {
-            throw KeychainError.itemNotFound
-        }
-        
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        
-        if status == errSecSuccess,
-           let data = result as? Data,
-           let token = String(data: data, encoding: .utf8) {
-            suiteDefaults.set(token, forKey: fallbackKey)
-            standardDefaults.set(token, forKey: fallbackKey)
-            suiteDefaults.synchronize()
-            standardDefaults.synchronize()
-            return token
-        }
-        
-        if status == errSecItemNotFound {
-            throw KeychainError.itemNotFound
-        }
-        throw KeychainError.unexpectedStatus(status)
+        if let token = keychainToken(for: account) { return token }
+        if let token = fileToken(for: account) { return token }
+        throw KeychainError.itemNotFound
     }
-    
-    // MARK: - Delete Token
-    
-    func deleteToken() throws {
-        // Clear UserDefaults fallback
-        suiteDefaults.removeObject(forKey: fallbackKey)
-        standardDefaults.removeObject(forKey: fallbackKey)
-        legacySuiteDefaults?.removeObject(forKey: fallbackKey)
-        suiteDefaults.synchronize()
-        standardDefaults.synchronize()
-        legacySuiteDefaults?.synchronize()
-        
-        guard usesKeychain else { return }
-        
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
-        
-        let status = SecItemDelete(query as CFDictionary)
-        
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw KeychainError.unexpectedStatus(status)
-        }
+
+    private func delete(_ account: Account) {
+        SecItemDelete(query(for: account) as CFDictionary)
+        removeFile(for: account)
+        erasePlaintext(for: account)
     }
-    
-    // MARK: - Check if Token Exists
-    
-    func hasToken() -> Bool {
-        // Prefer UserDefaults checks to avoid keychain prompts / signature issues
-        if let token = suiteDefaults.string(forKey: fallbackKey), !token.isEmpty {
-            return true
+
+    private func masked(_ account: Account) -> String? {
+        guard let token = try? read(account), !token.isEmpty else { return nil }
+
+        guard token.count > 8 else {
+            let visible = token.prefix(min(2, token.count))
+            return visible + String(repeating: "•", count: token.count - visible.count)
         }
-        if let legacy = legacySuiteDefaults?.string(forKey: fallbackKey), !legacy.isEmpty {
-            // Migrate legacy suite -> current
-            suiteDefaults.set(legacy, forKey: fallbackKey)
-            standardDefaults.set(legacy, forKey: fallbackKey)
-            suiteDefaults.synchronize()
-            standardDefaults.synchronize()
-            return true
-        }
-        if let token = standardDefaults.string(forKey: fallbackKey), !token.isEmpty {
-            // Ensure suite has a copy
-            suiteDefaults.set(token, forKey: fallbackKey)
-            suiteDefaults.synchronize()
-            return true
-        }
-        
-        guard usesKeychain else { return false }
-        
-        // Only if UserDefaults empty, attempt keychain
-        do {
-            _ = try getToken()
-            return true
-        } catch {
-            return false
-        }
-    }
-    
-    // MARK: - Vercel Token Methods
-    
-    func saveVercelToken(_ token: String) throws {
-        guard let data = token.data(using: .utf8) else {
-            throw KeychainError.invalidData
-        }
-        
-        // Always save to UserDefaults fallbacks first
-        suiteDefaults.set(token, forKey: vercelFallbackKey)
-        standardDefaults.set(token, forKey: vercelFallbackKey)
-        suiteDefaults.synchronize()
-        standardDefaults.synchronize()
-        
-        guard usesKeychain else { return }
-        
-        // Delete existing keychain item
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: vercelAccount
-        ]
-        SecItemDelete(deleteQuery as CFDictionary)
-        
-        // Try to save to keychain (best-effort)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: vercelAccount,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
-        ]
-        
-        let status = SecItemAdd(query as CFDictionary, nil)
-        if status != errSecSuccess {
-            print("[KeychainService] Vercel keychain save failed: \(status); using UserDefaults fallback")
-        }
-    }
-    
-    func getVercelToken() throws -> String {
-        if let token = suiteDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
-            return token
-        }
-        if let token = standardDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
-            suiteDefaults.set(token, forKey: vercelFallbackKey)
-            suiteDefaults.synchronize()
-            return token
-        }
-        
-        guard usesKeychain else {
-            throw KeychainError.itemNotFound
-        }
-        
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: vercelAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        
-        if status == errSecSuccess,
-           let data = result as? Data,
-           let token = String(data: data, encoding: .utf8) {
-            suiteDefaults.set(token, forKey: vercelFallbackKey)
-            standardDefaults.set(token, forKey: vercelFallbackKey)
-            suiteDefaults.synchronize()
-            standardDefaults.synchronize()
-            return token
-        }
-        
-        if status == errSecItemNotFound {
-            throw KeychainError.itemNotFound
-        }
-        throw KeychainError.unexpectedStatus(status)
-    }
-    
-    func deleteVercelToken() throws {
-        // Clear UserDefaults fallback
-        suiteDefaults.removeObject(forKey: vercelFallbackKey)
-        standardDefaults.removeObject(forKey: vercelFallbackKey)
-        suiteDefaults.synchronize()
-        standardDefaults.synchronize()
-        
-        guard usesKeychain else { return }
-        
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: vercelAccount
-        ]
-        
-        let status = SecItemDelete(query as CFDictionary)
-        
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw KeychainError.unexpectedStatus(status)
-        }
-    }
-    
-    func hasVercelToken() -> Bool {
-        if let token = suiteDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
-            return true
-        }
-        if let token = standardDefaults.string(forKey: vercelFallbackKey), !token.isEmpty {
-            suiteDefaults.set(token, forKey: vercelFallbackKey)
-            suiteDefaults.synchronize()
-            return true
-        }
-        
-        guard usesKeychain else { return false }
-        
-        do {
-            _ = try getVercelToken()
-            return true
-        } catch {
-            return false
-        }
-    }
-    
-    private func maskedToken(for key: String) -> String? {
-        let token =
-            suiteDefaults.string(forKey: key) ??
-            standardDefaults.string(forKey: key) ??
-            legacySuiteDefaults?.string(forKey: key)
-        
-        guard let token, !token.isEmpty else { return nil }
-        
-        if token.count <= 8 {
-            let visiblePrefix = token.prefix(min(2, token.count))
-            let hiddenCount = max(token.count - visiblePrefix.count, 0)
-            return "\(visiblePrefix)\(String(repeating: "•", count: hiddenCount))"
-        }
-        
         return "\(token.prefix(4))••••\(token.suffix(4))"
+    }
+
+    // MARK: - Keychain
+
+    private func query(for account: Account) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account.rawValue
+        ]
+    }
+
+    private func writeToKeychain(_ data: Data, for account: Account) -> Bool {
+        SecItemDelete(query(for: account) as CFDictionary)
+
+        var item = query(for: account)
+        item[kSecValueData as String] = data
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+
+        let status = SecItemAdd(item as CFDictionary, nil)
+        if status != errSecSuccess {
+            print("[KeychainService] Keychain save failed: \(status); storing in a private file")
+        }
+        return status == errSecSuccess
+    }
+
+    private func keychainToken(for account: Account) -> String? {
+        var item = query(for: account)
+        item[kSecReturnData as String] = true
+        item[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var result: AnyObject?
+        guard SecItemCopyMatching(item as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    // MARK: - File fallback
+
+    private func fileURL(for account: Account) -> URL? {
+        FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?
+            .appendingPathComponent("BuildNotifier", isDirectory: true)
+            .appendingPathComponent("\(account.rawValue).token", isDirectory: false)
+    }
+
+    private func writeFile(_ data: Data, for account: Account) throws {
+        guard let url = fileURL(for: account) else { throw KeychainError.invalidData }
+
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try data.write(to: url, options: .atomic)
+        // An atomic write swaps in a new file, so the mode has to be set afterwards.
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    private func fileToken(for account: Account) -> String? {
+        guard let url = fileURL(for: account),
+              let data = try? Data(contentsOf: url),
+              let token = String(data: data, encoding: .utf8),
+              !token.isEmpty else { return nil }
+        return token
+    }
+
+    private func removeFile(for account: Account) {
+        guard let url = fileURL(for: account) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    // MARK: - Plaintext migration
+
+    /// Domains that held tokens in the clear. Kept only to migrate off them.
+    private var plaintextDomains: [UserDefaults] {
+        [
+            UserDefaults(suiteName: "buildnotifier.circleci.shared"),
+            UserDefaults(suiteName: "group.buildnotifier.circleci.shared"),
+            .standard
+        ].compactMap { $0 }
+    }
+
+    private func plaintextToken(for account: Account) -> String? {
+        for defaults in plaintextDomains {
+            if let token = defaults.string(forKey: account.plaintextKey), !token.isEmpty {
+                return token
+            }
+        }
+        return nil
+    }
+
+    private func erasePlaintext(for account: Account) {
+        for defaults in plaintextDomains {
+            defaults.removeObject(forKey: account.plaintextKey)
+        }
     }
 }

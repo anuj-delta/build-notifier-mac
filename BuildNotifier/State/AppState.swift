@@ -629,7 +629,7 @@ final class AppState {
     
     func signOut() {
         stopPolling()
-        try? KeychainService.shared.deleteToken()
+        KeychainService.shared.deleteToken()
         Task {
             await CircleCIAPI.shared.clearToken()
         }
@@ -648,7 +648,7 @@ final class AppState {
     func changeToken() {
         // Preserve watchlist but clear token and go to onboarding
         stopPolling()
-        try? KeychainService.shared.deleteToken()
+        KeychainService.shared.deleteToken()
         Task {
             await CircleCIAPI.shared.clearToken()
         }
@@ -769,7 +769,7 @@ final class AppState {
 
     func disconnectVercel() {
         stopVercelPolling()
-        try? KeychainService.shared.deleteVercelToken()
+        KeychainService.shared.deleteVercelToken()
         Task {
             await VercelAPI.shared.clearToken()
         }
@@ -845,7 +845,7 @@ final class AppState {
             // Only wipe credentials when the token is actually invalid. Onboarding
             // explains the reauth, so no banner here.
             if let circleError = error as? CircleCIError, case .unauthorized = circleError {
-                try? KeychainService.shared.deleteToken()
+                KeychainService.shared.deleteToken()
                 await CircleCIAPI.shared.clearToken()
                 currentScreen = .onboarding
                 isLoading = false
