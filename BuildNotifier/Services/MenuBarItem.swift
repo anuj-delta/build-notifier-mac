@@ -187,11 +187,7 @@ private final class MenuPanel: NSPanel {
     private let hosting: NSViewController
 
     init<Content: View>(content: Content) {
-        let controller = NSHostingController(rootView: content)
-        // Otherwise the hosting controller pushes SwiftUI's ideal size onto the window while
-        // a drag is setting the window's size, and the two fight for every frame.
-        controller.sizingOptions = []
-        hosting = controller
+        hosting = NSHostingController(rootView: content)
         super.init(
             contentRect: NSRect(origin: .zero, size: NSSize(width: 100, height: 100)),
             styleMask: [.borderless, .nonactivatingPanel],
