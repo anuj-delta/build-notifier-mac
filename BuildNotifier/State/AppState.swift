@@ -414,13 +414,13 @@ final class AppState {
     
     func removeFromWatchlist(_ project: WatchedProject) {
         preferences.watchedProjects.removeAll { $0.id == project.id }
-        preferences.save()
+        savePreferences()
     }
-    
+
     func updateWatchedProject(_ project: WatchedProject) {
         if let index = preferences.watchedProjects.firstIndex(where: { $0.id == project.id }) {
             preferences.watchedProjects[index] = project
-            preferences.save()
+            savePreferences()
         }
     }
     
