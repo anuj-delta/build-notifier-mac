@@ -783,15 +783,8 @@ final class BuildPoller: ObservableObject {
                 let jobs = try await fetchWorkflowJobs(workflowId)
                 approvalSupport[workflowId] = jobs.contains(where: \.canStillRequireApproval)
 
-                let hasInProgressJobs = jobs.contains { job in
-                    !job.isApprovalJob && (job.status == "running" || job.status == "queued")
-                }
-
-                if !hasInProgressJobs {
-                    let pendingJobs = jobs.filter { $0.isPendingApproval }
-                    for job in pendingJobs {
-                        approvals.append(PendingApproval(workflowId: workflowId, job: job, build: build))
-                    }
+                for job in jobs where job.isPendingApproval {
+                    approvals.append(PendingApproval(workflowId: workflowId, job: job, build: build))
                 }
             } catch {
                 continue

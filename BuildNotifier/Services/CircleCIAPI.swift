@@ -154,9 +154,10 @@ actor CircleCIAPI {
     
     /// Approve a pending approval job
     func approveJob(workflowId: String, approvalRequestId: String) async throws {
-        let _: EmptyResponse = try await request(
+        _ = try await send(
             url: "\(baseURLv2)/workflow/\(workflowId)/approve/\(approvalRequestId)",
-            method: "POST"
+            method: "POST",
+            body: nil
         )
     }
     
@@ -187,6 +188,19 @@ actor CircleCIAPI {
         method: String,
         body: Data? = nil
     ) async throws -> T {
+        let data = try await send(url: urlString, method: method, body: body)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw CircleCIError.decodingError(error)
+        }
+    }
+
+    private func send(
+        url urlString: String,
+        method: String,
+        body: Data?
+    ) async throws -> Data {
         guard let token = token else {
             throw CircleCIError.noToken
         }
@@ -219,16 +233,7 @@ actor CircleCIAPI {
             let message = String(data: data, encoding: .utf8)
             throw CircleCIError.httpError(httpResponse.statusCode, message)
         }
-        
-        do {
-            let decoder = JSONDecoder()
-            return try decoder.decode(T.self, from: data)
-        } catch {
-            throw CircleCIError.decodingError(error)
-        }
+
+        return data
     }
 }
-
-// MARK: - Empty Response (for endpoints that return no content)
-
-struct EmptyResponse: Decodable {}

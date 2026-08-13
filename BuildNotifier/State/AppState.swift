@@ -427,7 +427,7 @@ final class AppState {
     func startPolling() {
         regroupBuilds()
         poller.startPolling(interval: TimeInterval(preferences.pollingIntervalSeconds))
-        autoApprovalPoller.startPolling(interval: 120)
+        autoApprovalPoller.startPolling()
     }
     
     func stopPolling() {
@@ -583,18 +583,20 @@ final class AppState {
         }
     }
 
+    /// Approves one gate. The armed auto-approve for the workflow stays on: a workflow with
+    /// two gates asks again, and the row is dropped up front because the next poll still
+    /// reports the gate as `on_hold` for a few seconds.
     func approveJob(_ approval: PendingApproval) async {
+        pendingApprovals.removeAll { $0.id == approval.id }
         do {
             try await CircleCIAPI.shared.approveJob(
                 workflowId: approval.workflowId,
                 approvalRequestId: approval.jobId
             )
-            armedAutoApprovals.removeValue(forKey: approval.workflowId)
-            // Refresh after approval
-            poller.poll()
         } catch {
             reportError(error)
         }
+        poller.poll()
     }
 
     func recordWorkflowApprovalSupport(workflowId: String, jobs: [WorkflowJob]) {

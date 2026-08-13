@@ -279,10 +279,32 @@ extension Build {
         return "https://app.circleci.com/pipelines/workflows/\(workflowId)"
     }
 
+    /// Falls back to the PR named in a merge commit, so a build on a long-lived branch like
+    /// `main` still links to the PR that landed on it after that PR closed.
     var pullRequestUrl: String? {
-        guard let url = pullRequests?.first?.url, !url.isEmpty else { return nil }
-        return url
+        if let url = pullRequests?.first?.url, !url.isEmpty {
+            return url
+        }
+        guard vcsType == "gh",
+              let repoUrl = vcsUrl?.trimmingCharacters(in: CharacterSet(charactersIn: "/")), !repoUrl.isEmpty,
+              let number = mergedPullRequestNumber else {
+            return nil
+        }
+        return "\(repoUrl)/pull/\(number)"
     }
+
+    /// PR number in a merge commit subject: GitHub's `Merge pull request #281 from org/branch`,
+    /// or a squash merge's `Some title (#281)`.
+    private var mergedPullRequestNumber: Int? {
+        guard let subject,
+              let match = subject.firstMatch(of: Self.mergedPullRequestPattern),
+              let number = match.1 ?? match.2 else {
+            return nil
+        }
+        return Int(number)
+    }
+
+    private static let mergedPullRequestPattern = #/^Merge pull request #(\d+)|\(#(\d+)\)\s*$/#
 
     /// PR number parsed from the trailing path segment of the PR URL (e.g. `.../pull/478` -> 478).
     var pullRequestNumber: Int? {
