@@ -9,13 +9,25 @@ struct DeployBranchOverlay: View {
         case branch
     }
 
-    @State private var branch = ""
+    @State private var branch: String
     @State private var env: DeployEnvironment = .devnet
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var successMessage: String?
     @FocusState private var focusedField: Field?
     @Namespace private var envSelection
+
+    init(
+        project: WatchedProject,
+        branch: String = "",
+        appState: AppState,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.project = project
+        self.appState = appState
+        self.onDismiss = onDismiss
+        _branch = State(initialValue: branch)
+    }
 
     private var canDeploy: Bool {
         !branch.trimmingCharacters(in: .whitespaces).isEmpty && !isSubmitting
@@ -85,7 +97,24 @@ struct DeployBranchOverlay: View {
             .padding(20)
             .modalSurface(width: 324)
         }
-        .onAppear { focusedField = .branch }
+        .task {
+            focusedField = .branch
+            await placeCaretAfterBranch()
+        }
+    }
+
+    /// AppKit selects the whole string when a text field takes focus, and a prefilled branch is
+    /// there to extend, not to replace. The field editor becomes first responder a beat after the
+    /// focus assignment, so wait for it.
+    private func placeCaretAfterBranch() async {
+        guard !branch.isEmpty else { return }
+        for _ in 0..<10 {
+            if let editor = NSApp.keyWindow?.firstResponder as? NSTextView {
+                editor.selectedRange = NSRange(location: editor.string.count, length: 0)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(16))
+        }
     }
 
     @ViewBuilder

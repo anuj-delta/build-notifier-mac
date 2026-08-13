@@ -50,6 +50,7 @@ struct DeployBadge: Identifiable, Equatable {
 
 struct ProjectSection: View {
     let project: WatchedProject
+    let currentUser: User?
     let branches: [BranchBuild]
     let deployedBranchesByEnv: [DeployEnvironment: String]
     let deployingBranchesByEnv: [DeployEnvironment: String]
@@ -59,6 +60,7 @@ struct ProjectSection: View {
     let armedAutoApprovalWorkflowIds: Set<String>
     let onRetry: (Build) -> Void
     let onCancel: (Build) -> Void
+    let onRedeploy: (Build) -> Void
     let onArmAutoApprove: (Build) -> Void
     let onCancelAutoApprove: (String) -> Void
     let onOpen: (Build) -> Void
@@ -76,15 +78,11 @@ struct ProjectSection: View {
     }
 
     private func repositoryPath(highlighted: Bool) -> some View {
-        RepositoryPathLabel(
-            organization: project.orgName,
-            repository: project.repoName,
-            repositoryFont: .system(size: 14, weight: .semibold),
-            organizationFont: .system(size: 14, weight: .medium),
-            repositoryColor: highlighted ? AppChrome.accent : AppChrome.text,
-            organizationColor: highlighted ? AppChrome.accent.opacity(0.7) : AppChrome.textMuted,
-            truncationMode: .middle
-        )
+        Text(project.repoName)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(highlighted ? AppChrome.accent : AppChrome.text)
+            .lineLimit(1)
+            .truncationMode(.tail)
     }
 
     private func repositoryLink(_ repoUrl: String) -> some View {
@@ -190,6 +188,7 @@ struct ProjectSection: View {
                         let workflowId = build.workflows?.workflowId
                         BuildRow(
                             build: build,
+                            currentUser: currentUser,
                             span: item.span,
                             resolvedWorkflowStatus: workflowId.flatMap { workflowStatusByWorkflowId[$0] },
                             canAutoApprove: workflowId.map { approvalCapableWorkflowIds.contains($0) } ?? false,
@@ -197,6 +196,7 @@ struct ProjectSection: View {
                             deployBadges: deployBadges(for: build),
                             onRetry: { onRetry(build) },
                             onCancel: { onCancel(build) },
+                            onRedeploy: { onRedeploy(build) },
                             onAutoApprove: { onArmAutoApprove(build) },
                             onCancelAutoApprove: {
                                 if let workflowId = build.workflows?.workflowId {
@@ -229,6 +229,7 @@ struct BuildRow: View {
     private let trailingActionRowHeight: CGFloat = 14
 
     let build: Build
+    let currentUser: User?
     let span: WorkflowSpan
     let resolvedWorkflowStatus: String?
     let canAutoApprove: Bool
@@ -236,6 +237,7 @@ struct BuildRow: View {
     let deployBadges: [DeployBadge]
     let onRetry: () -> Void
     let onCancel: () -> Void
+    let onRedeploy: () -> Void
     let onAutoApprove: () -> Void
     let onCancelAutoApprove: () -> Void
     let onOpen: () -> Void
@@ -260,7 +262,11 @@ struct BuildRow: View {
                             .shimmering(active: status.isInProgress)
 
                         if build.pullRequestUrl != nil {
-                            PullRequestBadge(number: build.pullRequestNumber, action: onOpenPR)
+                            PullRequestBadge(
+                                number: build.pullRequestNumber,
+                                title: build.pullRequestTitle,
+                                action: onOpenPR
+                            )
                         }
 
                         if isAutoApproveArmed {
@@ -278,7 +284,7 @@ struct BuildRow: View {
                     }
 
                     HStack(spacing: 5) {
-                        if let author = build.authorDisplayName {
+                        if let author = build.authorDisplayName(excluding: currentUser) {
                             Text(author)
                                 .font(Typography.rowAuthor)
                                 .foregroundStyle(AppChrome.textSecondary)
@@ -290,9 +296,9 @@ struct BuildRow: View {
                                 .foregroundStyle(AppChrome.textMuted)
                         }
 
-                        Text(build.truncatedSubject)
+                        Text(build.pullRequestTitle ?? build.rowSubject)
                             .font(Typography.rowMeta)
-                            .foregroundStyle(AppChrome.textMuted)
+                            .foregroundStyle(AppChrome.textSecondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
@@ -390,7 +396,7 @@ struct BuildRow: View {
     private var trailingActions: some View {
         HStack(spacing: 8) {
             if build.buildStatus.isFailure {
-                actionIconButton(
+                RowActionButton(
                     systemName: "arrow.clockwise",
                     title: "Retry"
                 ) {
@@ -399,7 +405,7 @@ struct BuildRow: View {
             }
 
             if canAutoApprove || isAutoApproveArmed {
-                actionIconButton(
+                RowActionButton(
                     systemName: isAutoApproveArmed ? "checkmark.circle.fill" : "checkmark.circle",
                     title: isAutoApproveArmed ? "Cancel Auto-Approve" : "Auto-Approve",
                     tint: isAutoApproveArmed ? AppChrome.accent : AppChrome.textMuted
@@ -412,34 +418,25 @@ struct BuildRow: View {
                 }
             }
 
+            if canRedeploy {
+                RowActionButton(
+                    systemName: "paperplane",
+                    title: "Redeploy \(build.branch ?? "this branch")"
+                ) {
+                    onRedeploy()
+                }
+            }
+
             if build.buildStatus.isRunning {
-                actionIconButton(
+                RowActionButton(
                     systemName: "xmark.circle",
                     title: "Cancel",
-                    tint: AppChrome.textMuted
+                    hoverTint: AppChrome.danger
                 ) {
                     onCancel()
                 }
             }
         }
-    }
-
-    private func actionIconButton(
-        systemName: String,
-        title: String,
-        tint: Color = AppChrome.textMuted,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            action()
-        } label: {
-            Image(systemName: systemName)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 14, height: 14)
-        }
-        .buttonStyle(.plain)
-        .help(title)
     }
 
     private var rowBackground: some View {
@@ -453,14 +450,66 @@ struct BuildRow: View {
     }
 
     private var hasActions: Bool {
-        build.buildStatus.isFailure || build.buildStatus.isRunning || canAutoApprove || isAutoApproveArmed
+        build.buildStatus.isFailure || build.buildStatus.isRunning || canAutoApprove || isAutoApproveArmed || canRedeploy
     }
 
-    /// Actions are revealed on hover, or kept visible while auto-approve is armed.
+    /// Actions are revealed on hover, or kept visible while auto-approve is armed. A row with
+    /// no actions keeps its deploy badge on hover instead of blanking the slot.
     private var showActions: Bool {
-        isHovered || isAutoApproveArmed
+        hasActions && (isHovered || isAutoApproveArmed)
     }
 
+    /// v1.1 and v2 disagree for a few seconds after a workflow finishes, so both have to call it
+    /// stopped before Redeploy appears beside Cancel.
+    private var canRedeploy: Bool {
+        status != .onHold
+            && !status.isInProgress
+            && !build.buildStatus.isRunning
+            && !build.buildStatus.isPending
+            && !(build.branch ?? "").isEmpty
+    }
+
+}
+
+/// A row action reads as live before the click: it lights up under the pointer and dips on
+/// press. The hover chip sits in the background with negative padding, so it can be larger
+/// than the glyph without changing the row's height.
+private struct RowActionButton: View {
+    let systemName: String
+    let title: String
+    var tint: Color = AppChrome.textMuted
+    var hoverTint: Color = AppChrome.accent
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isHovered ? hoverTint : tint)
+                .frame(width: 14, height: 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(isHovered ? hoverTint.opacity(0.14) : .clear)
+                        .padding(-3)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(RowActionButtonStyle())
+        .onHover { isHovered = $0 }
+        .help(title)
+        .accessibilityLabel(title)
+        .animation(Motion.hover, value: isHovered)
+    }
+}
+
+private struct RowActionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .animation(Motion.hover, value: configuration.isPressed)
+    }
 }
 
 private struct CopyBranchButton: View {
@@ -513,6 +562,7 @@ private struct CopyBranchButton: View {
 
 private struct PullRequestBadge: View {
     let number: Int?
+    let title: String?
     let action: () -> Void
 
     @State private var isHovered = false
@@ -564,6 +614,13 @@ private struct PullRequestBadge: View {
             isHovered = hovering
         }
         .pointingHandCursor()
-        .help(number.map { "Open pull request #\($0)" } ?? "Open pull request")
+        .help(tooltip)
+    }
+
+    /// Carries the full title, because the second line of the row truncates it.
+    private var tooltip: String {
+        let target = number.map { "#\($0)" } ?? "pull request"
+        guard let title else { return "Open \(target)" }
+        return "\(target) \(title)"
     }
 }

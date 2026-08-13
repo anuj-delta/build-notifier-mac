@@ -212,11 +212,7 @@ struct VercelProjectSection: View {
 
             if isExpanded {
                 if deployments.isEmpty {
-                    Text("No recent deployments")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(AppChrome.textMuted)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
+                    EmptySectionNote(text: "No deployments yet")
                 } else {
                     VStack(spacing: 2) {
                         ForEach(displayedDeployments) { deployment in

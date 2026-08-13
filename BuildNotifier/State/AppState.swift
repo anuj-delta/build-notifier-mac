@@ -583,9 +583,8 @@ final class AppState {
         }
     }
 
-    /// Approves one gate. The armed auto-approve for the workflow stays on: a workflow with
-    /// two gates asks again, and the row is dropped up front because the next poll still
-    /// reports the gate as `on_hold` for a few seconds.
+    /// Drops the row up front, because the next poll still reports the gate as `on_hold` for a
+    /// few seconds.
     func approveJob(_ approval: PendingApproval) async {
         pendingApprovals.removeAll { $0.id == approval.id }
         do {

@@ -171,8 +171,7 @@ final class BuildPoller: ObservableObject {
         
         // Capture current user info for filtering (main actor isolated)
         let currentUserLogin = appState.currentUser?.login
-        let currentUserEmail = appState.currentUser?.selectedEmail
-        let currentUserName = appState.currentUser?.name
+        let identities = appState.currentUser?.identities ?? []
         let fetchBuilds = self.fetchBuilds
         let fetchWorkflowJobs = self.fetchWorkflowJobs
         let fetchWorkflow = self.fetchWorkflow
@@ -208,12 +207,7 @@ final class BuildPoller: ObservableObject {
                             var filteredBuilds: [Build] = []
 
                             for build in builds {
-                                if Self.matchesCurrentUserFromCommit(
-                                    build: build,
-                                    currentUserLogin: currentUserLogin,
-                                    currentUserEmail: currentUserEmail,
-                                    currentUserName: currentUserName
-                                ) {
+                                if Self.matchesCurrentUserFromCommit(build: build, identities: identities) {
                                     filteredBuilds.append(build)
                                     continue
                                 }
@@ -744,23 +738,11 @@ final class BuildPoller: ObservableObject {
 
     private nonisolated static func matchesCurrentUserFromCommit(
         build: Build,
-        currentUserLogin: String?,
-        currentUserEmail: String?,
-        currentUserName: String?
+        identities: Set<String>
     ) -> Bool {
-        if let email = currentUserEmail, let committerEmail = build.committerEmail,
-           committerEmail.lowercased() == email.lowercased() {
-            return true
-        }
-        if let name = currentUserName, let committerName = build.committerName,
-           committerName.lowercased() == name.lowercased() {
-            return true
-        }
-        if let login = currentUserLogin, let committerName = build.committerName,
-           committerName.lowercased() == login.lowercased() {
-            return true
-        }
-        return false
+        [build.committerEmail, build.committerName]
+            .compactMap { $0?.lowercased() }
+            .contains { identities.contains($0) }
     }
 
     private nonisolated static func fetchApprovals(

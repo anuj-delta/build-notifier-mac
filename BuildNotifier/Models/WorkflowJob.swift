@@ -50,7 +50,7 @@ struct WorkflowJob: Codable, Identifiable, Equatable {
         }
     }
 
-    var keepsWorkflowActionable: Bool {
+    var isActive: Bool {
         switch status {
         case "running", "queued", "blocked", "on_hold":
             return true

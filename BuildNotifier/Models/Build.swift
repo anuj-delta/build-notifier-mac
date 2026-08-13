@@ -249,11 +249,11 @@ extension Build {
     }
 
     var truncatedSubject: String {
-        guard let subject = subject else { return "No commit message" }
-        if subject.count > 50 {
-            return String(subject.prefix(47)) + "..."
+        let text = commitSubject
+        if text.count > 50 {
+            return String(text.prefix(47)) + "..."
         }
-        return subject
+        return text
     }
     
     /// Best-effort timestamp for sorting projects by activity.
@@ -296,20 +296,68 @@ extension Build {
     /// PR number in a merge commit subject: GitHub's `Merge pull request #281 from org/branch`,
     /// or a squash merge's `Some title (#281)`.
     private var mergedPullRequestNumber: Int? {
-        guard let subject,
-              let match = subject.firstMatch(of: Self.mergedPullRequestPattern),
-              let number = match.1 ?? match.2 else {
-            return nil
-        }
-        return Int(number)
+        guard let subject else { return nil }
+        if let match = subject.firstMatch(of: Self.mergePrefix) { return Int(match.1) }
+        if let match = subject.firstMatch(of: Self.squashSuffix) { return Int(match.1) }
+        return nil
     }
 
-    private static let mergedPullRequestPattern = #/^Merge pull request #(\d+)|\(#(\d+)\)\s*$/#
+    /// The PR title, when the commit carries one. GitHub puts it in the body of a merge commit,
+    /// and in front of the number on a squash merge. A plain commit has no PR title: its body is
+    /// the long message, not a title.
+    var pullRequestTitle: String? {
+        guard let subject else { return nil }
+        guard subject.starts(with: Self.mergePrefix) else { return squashTitle }
+        let title = body?
+            .split(separator: "\n").first?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+        return title.isEmpty ? nil : title
+    }
 
-    /// PR number parsed from the trailing path segment of the PR URL (e.g. `.../pull/478` -> 478).
+    /// The commit subject, without the `into <branch>` tail that only names this build's branch.
+    var commitSubject: String {
+        guard let subject = subject?.trimmingCharacters(in: .whitespacesAndNewlines), !subject.isEmpty else {
+            return "No commit message"
+        }
+        guard let branch, subject.hasSuffix(" into \(branch)") else { return subject }
+        return String(subject.dropLast(" into \(branch)".count))
+    }
+
+    /// The subject for a build row, which shows the PR number in its own badge.
+    var rowSubject: String {
+        squashTitle ?? commitSubject
+    }
+
+    /// The commit author, or nil when the signed-in user made the commit. Their own name sits on
+    /// almost every row, and the row gives that width to the PR title instead.
+    func authorDisplayName(excluding user: User?) -> String? {
+        guard let author = authorDisplayName else { return nil }
+        guard let user else { return author }
+        let mine = user.identities
+        if mine.contains(author.lowercased()) { return nil }
+        if let email = authorEmail?.lowercased(), mine.contains(email) { return nil }
+        return author
+    }
+
+    /// The text in front of a squash merge's `(#281)`.
+    private var squashTitle: String? {
+        guard let subject, let match = subject.firstMatch(of: Self.squashSuffix) else { return nil }
+        let title = subject[subject.startIndex..<match.range.lowerBound]
+            .trimmingCharacters(in: .whitespaces)
+        return title.isEmpty ? nil : title
+    }
+
+    private static let mergePrefix = #/^Merge pull request #(\d+)/#
+    private static let squashSuffix = #/\s*\(#(\d+)\)\s*$/#
+
+    /// The PR number from the API's URL (e.g. `.../pull/478`), or from the merge commit.
     var pullRequestNumber: Int? {
-        guard let last = pullRequestUrl?.split(separator: "/").last else { return nil }
-        return Int(last)
+        if let url = pullRequests?.first?.url,
+           let last = url.split(separator: "/").last,
+           let number = Int(last) {
+            return number
+        }
+        return mergedPullRequestNumber
     }
 
     var autoApproveLabel: String {

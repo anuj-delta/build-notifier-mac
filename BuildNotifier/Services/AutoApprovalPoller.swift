@@ -131,9 +131,8 @@ final class AutoApprovalPoller: ObservableObject {
                     requestBuildRefresh(appState)
                 }
 
-                // A workflow can hold more than one gate, so stay armed until the workflow
-                // itself is done. Approving the first gate does not end the arm.
-                if !jobs.isEmpty, !jobs.contains(where: \.keepsWorkflowActionable) {
+                // A workflow can hold more than one gate, so stay armed until it is done.
+                if !jobs.isEmpty, !jobs.contains(where: \.isActive) {
                     appState.armedAutoApprovals.removeValue(forKey: armedApproval.workflowId)
                 }
             } catch is CancellationError {
@@ -146,10 +145,7 @@ final class AutoApprovalPoller: ObservableObject {
         lastPollTime = now()
     }
 
-    /// Approves one gate and reports whether CircleCI accepted it. A rejection means the gate
-    /// takes no approval any more (someone else approved it, or the job moved on), so it is
-    /// dropped quietly instead of failing the poll and notifying. Every other failure, an
-    /// expired token or a missing permission included, still surfaces.
+    /// Approves one gate and reports whether CircleCI accepted it.
     private func approve(
         _ gate: WorkflowJob,
         for armedApproval: ArmedAutoApproval,

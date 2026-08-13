@@ -154,10 +154,9 @@ actor CircleCIAPI {
     
     /// Approve a pending approval job
     func approveJob(workflowId: String, approvalRequestId: String) async throws {
-        _ = try await send(
+        try await send(
             url: "\(baseURLv2)/workflow/\(workflowId)/approve/\(approvalRequestId)",
-            method: "POST",
-            body: nil
+            method: "POST"
         )
     }
     
@@ -196,10 +195,11 @@ actor CircleCIAPI {
         }
     }
 
+    @discardableResult
     private func send(
         url urlString: String,
         method: String,
-        body: Data?
+        body: Data? = nil
     ) async throws -> Data {
         guard let token = token else {
             throw CircleCIError.noToken
