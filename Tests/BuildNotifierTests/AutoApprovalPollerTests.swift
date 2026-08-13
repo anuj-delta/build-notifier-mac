@@ -15,7 +15,7 @@ final class AutoApprovalPollerTests: XCTestCase {
         )
         let appState = AppState(autoApprovalPoller: poller)
         let build = makeBuild()
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeApprovalGate(status: "not_run")])
 
         appState.armAutoApprove(for: build)
         appState.armAutoApprove(for: build)
@@ -30,8 +30,8 @@ final class AutoApprovalPollerTests: XCTestCase {
             approvePendingJob: { _, _ in }
         )
         let appState = AppState(autoApprovalPoller: poller)
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-2", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeApprovalGate(status: "not_run")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-2", jobs: [makeApprovalGate(status: "not_run")])
 
         appState.armAutoApprove(for: makeBuild(workflowId: "workflow-1", buildNum: 1))
         appState.armAutoApprove(for: makeBuild(workflowId: "workflow-2", buildNum: 2))
@@ -48,7 +48,7 @@ final class AutoApprovalPollerTests: XCTestCase {
             approvePendingJob: { _, _ in }
         )
         let appState = AppState(autoApprovalPoller: poller)
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeApprovalGate(status: "not_run")])
 
         appState.armAutoApprove(for: makeBuild())
         appState.preferences.notificationsEnabled = false
@@ -68,19 +68,7 @@ final class AutoApprovalPollerTests: XCTestCase {
 
         let poller = AutoApprovalPoller(
             fetchWorkflowJobs: { _ in
-                [
-                    WorkflowJob(
-                        id: "approval-job-1",
-                        name: "Deploy approval",
-                        projectSlug: "gh/org/repo",
-                        status: "on_hold",
-                        type: "approval",
-                        approvedBy: nil,
-                        startedAt: nil,
-                        stoppedAt: nil,
-                        jobNumber: nil
-                    )
-                ]
+                [makeApprovalGate(id: "approval-job-1", name: "Deploy approval", status: "on_hold")]
             },
             approvePendingJob: { workflowId, approvalRequestId in
                 approvedRequests.append((workflowId, approvalRequestId))
@@ -93,7 +81,7 @@ final class AutoApprovalPollerTests: XCTestCase {
             }
         )
         let appState = AppState(autoApprovalPoller: poller)
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeApprovalGate(status: "not_run")])
 
         appState.armAutoApprove(for: makeBuild())
         await poller.checkNow()
@@ -105,37 +93,81 @@ final class AutoApprovalPollerTests: XCTestCase {
         XCTAssertEqual(sentNotifications.first?.0, "workflow-1")
         XCTAssertEqual(sentNotifications.first?.1, "Deploy approval")
         XCTAssertEqual(refreshed, 1)
-        XCTAssertTrue(appState.armedAutoApprovals.isEmpty)
     }
 
-    func testWorkflowClearsArmedApprovalAfterApprovalHasAlreadyBeenConsumed() async {
+    func testEveryGateWaitingInTheWorkflowIsApproved() async {
+        var approvedJobIds: [String] = []
+        var sentNotifications: [String] = []
+        var refreshed = 0
+
+        let poller = AutoApprovalPoller(
+            fetchWorkflowJobs: { _ in
+                [
+                    makeApprovalGate(id: "gate-sidekiq", name: "deploy-approval-ind-sidekiq", status: "on_hold"),
+                    makeApprovalGate(id: "gate-rails", name: "deploy-approval-ind-rails", status: "on_hold")
+                ]
+            },
+            approvePendingJob: { _, approvalRequestId in
+                approvedJobIds.append(approvalRequestId)
+            },
+            sendAutoApprovedNotification: { _, jobName, _ in
+                sentNotifications.append(jobName)
+            },
+            requestBuildRefresh: { _ in
+                refreshed += 1
+            }
+        )
+        let appState = AppState(autoApprovalPoller: poller)
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeApprovalGate(status: "not_run")])
+
+        appState.armAutoApprove(for: makeBuild())
+        await poller.checkNow()
+
+        XCTAssertEqual(approvedJobIds, ["gate-sidekiq", "gate-rails"])
+        XCTAssertEqual(sentNotifications, ["deploy-approval-ind-sidekiq", "deploy-approval-ind-rails"])
+        XCTAssertEqual(refreshed, 1)
+    }
+
+    /// A gate keeps reporting `on_hold` for a few seconds after it is approved, so the next
+    /// poll must not approve it again and announce it twice.
+    func testGateApprovedOnceIsNotApprovedAgainOnTheNextPoll() async {
+        var approvedRequests = 0
+        var sentNotifications = 0
+
+        let poller = AutoApprovalPoller(
+            fetchWorkflowJobs: { _ in
+                [
+                    makeApprovalGate(id: "gate-1", status: "on_hold"),
+                    makeWorkflowJob(id: "deploy-1", name: "Deploy", status: "running")
+                ]
+            },
+            approvePendingJob: { _, _ in
+                approvedRequests += 1
+            },
+            sendAutoApprovedNotification: { _, _, _ in
+                sentNotifications += 1
+            }
+        )
+        let appState = AppState(autoApprovalPoller: poller)
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeApprovalGate(status: "not_run")])
+
+        appState.armAutoApprove(for: makeBuild())
+        await poller.checkNow()
+        await poller.checkNow()
+
+        XCTAssertEqual(approvedRequests, 1)
+        XCTAssertEqual(sentNotifications, 1)
+    }
+
+    func testArmStaysWhileTheWorkflowCanStillAskForApproval() async {
         var approvedRequests = 0
 
         let poller = AutoApprovalPoller(
             fetchWorkflowJobs: { _ in
                 [
-                    WorkflowJob(
-                        id: "approval-job",
-                        name: "Deploy approval",
-                        projectSlug: "gh/org/repo",
-                        status: "success",
-                        type: "approval",
-                        approvedBy: "user-123",
-                        startedAt: nil,
-                        stoppedAt: nil,
-                        jobNumber: 10
-                    ),
-                    WorkflowJob(
-                        id: "job-1",
-                        name: "Deploy",
-                        projectSlug: "gh/org/repo",
-                        status: "running",
-                        type: "deploy",
-                        approvedBy: nil,
-                        startedAt: nil,
-                        stoppedAt: nil,
-                        jobNumber: 11
-                    )
+                    makeApprovalGate(id: "gate-1", status: "success", approvedBy: "user-123"),
+                    makeWorkflowJob(id: "deploy-1", name: "Deploy", status: "running"),
+                    makeApprovalGate(id: "gate-2", status: "blocked")
                 ]
             },
             approvePendingJob: { _, _ in
@@ -143,13 +175,62 @@ final class AutoApprovalPollerTests: XCTestCase {
             }
         )
         let appState = AppState(autoApprovalPoller: poller)
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeApprovalGate(status: "not_run")])
 
         appState.armAutoApprove(for: makeBuild())
         await poller.checkNow()
 
         XCTAssertEqual(approvedRequests, 0)
+        XCTAssertNotNil(appState.armedAutoApprovals["workflow-1"])
+    }
+
+    func testArmClearsOnceTheWorkflowIsDone() async {
+        let poller = AutoApprovalPoller(
+            fetchWorkflowJobs: { _ in
+                [
+                    makeApprovalGate(id: "gate-1", status: "success", approvedBy: "user-123"),
+                    makeWorkflowJob(id: "deploy-1", name: "Deploy", status: "success")
+                ]
+            },
+            approvePendingJob: { _, _ in }
+        )
+        let appState = AppState(autoApprovalPoller: poller)
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeApprovalGate(status: "not_run")])
+
+        appState.armAutoApprove(for: makeBuild())
+        await poller.checkNow()
+
         XCTAssertTrue(appState.armedAutoApprovals.isEmpty)
+    }
+
+    func testGateCircleCIRefusesIsNotAnnouncedAndKeepsTheArm() async {
+        var sentNotifications = 0
+        var refreshed = 0
+
+        let poller = AutoApprovalPoller(
+            fetchWorkflowJobs: { _ in
+                [makeApprovalGate(id: "gate-1", status: "on_hold")]
+            },
+            approvePendingJob: { _, _ in
+                throw CircleCIError.httpError(400, "Job is not awaiting approval")
+            },
+            sendAutoApprovedNotification: { _, _, _ in
+                sentNotifications += 1
+            },
+            requestBuildRefresh: { _ in
+                refreshed += 1
+            }
+        )
+        let appState = AppState(autoApprovalPoller: poller)
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeApprovalGate(status: "not_run")])
+
+        appState.armAutoApprove(for: makeBuild())
+        await poller.checkNow()
+
+        XCTAssertEqual(sentNotifications, 0)
+        XCTAssertEqual(refreshed, 0)
+        XCTAssertNotNil(appState.armedAutoApprovals["workflow-1"])
+        XCTAssertNil(poller.error)
     }
 
     func testTransientErrorsKeepArmedApprovalForRetry() async {
@@ -164,7 +245,7 @@ final class AutoApprovalPollerTests: XCTestCase {
             approvePendingJob: { _, _ in }
         )
         let appState = AppState(autoApprovalPoller: poller)
-        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeWorkflowJob(type: "approval", status: "not_run")])
+        appState.recordWorkflowApprovalSupport(workflowId: "workflow-1", jobs: [makeApprovalGate(status: "not_run")])
 
         appState.armAutoApprove(for: makeBuild())
         await poller.checkNow()
@@ -183,54 +264,69 @@ final class AutoApprovalPollerTests: XCTestCase {
 
         XCTAssertTrue(appState.armedAutoApprovals.isEmpty)
     }
+}
 
-    private func makeBuild(
-        workflowId: String = "workflow-1",
-        buildNum: Int = 42
-    ) -> Build {
-        Build(
-            vcsUrl: "https://github.com/org/repo",
-            buildUrl: "https://app.circleci.com/pipelines/workflows/\(workflowId)",
-            buildNum: buildNum,
-            branch: "main",
-            vcsRevision: "abc123",
-            committerName: "Dev",
-            committerEmail: "dev@example.com",
-            authorName: "Dev",
-            authorEmail: "dev@example.com",
-            subject: "Ship it",
-            body: nil,
-            why: nil,
-            queuedAt: nil,
-            startTime: nil,
-            stopTime: nil,
-            buildTimeMillis: nil,
-            username: "org",
-            reponame: "repo",
-            lifecycle: "running",
-            outcome: nil,
-            status: "running",
-            retryOf: nil,
-            workflows: WorkflowInfo(
-                jobName: "deploy",
-                workflowId: workflowId,
-                workflowName: "deploy-workflow"
-            ),
-            pullRequests: nil
-        )
-    }
+private func makeBuild(
+    workflowId: String = "workflow-1",
+    buildNum: Int = 42
+) -> Build {
+    Build(
+        vcsUrl: "https://github.com/org/repo",
+        buildUrl: "https://app.circleci.com/pipelines/workflows/\(workflowId)",
+        buildNum: buildNum,
+        branch: "main",
+        vcsRevision: "abc123",
+        committerName: "Dev",
+        committerEmail: "dev@example.com",
+        authorName: "Dev",
+        authorEmail: "dev@example.com",
+        subject: "Ship it",
+        body: nil,
+        why: nil,
+        queuedAt: nil,
+        startTime: nil,
+        stopTime: nil,
+        buildTimeMillis: nil,
+        username: "org",
+        reponame: "repo",
+        lifecycle: "running",
+        outcome: nil,
+        status: "running",
+        retryOf: nil,
+        workflows: WorkflowInfo(
+            jobName: "deploy",
+            workflowId: workflowId,
+            workflowName: "deploy-workflow"
+        ),
+        pullRequests: nil
+    )
+}
 
-    private func makeWorkflowJob(type: String, status: String = "success") -> WorkflowJob {
-        WorkflowJob(
-            id: "\(type)-job",
-            name: "\(type.capitalized) Job",
-            projectSlug: "gh/org/repo",
-            status: status,
-            type: type,
-            approvedBy: nil,
-            startedAt: nil,
-            stoppedAt: nil,
-            jobNumber: 10
-        )
-    }
+private func makeApprovalGate(
+    id: String = "approval-job",
+    name: String = "Deploy approval",
+    status: String,
+    approvedBy: String? = nil
+) -> WorkflowJob {
+    makeWorkflowJob(id: id, name: name, status: status, type: "approval", approvedBy: approvedBy)
+}
+
+private func makeWorkflowJob(
+    id: String,
+    name: String,
+    status: String,
+    type: String? = nil,
+    approvedBy: String? = nil
+) -> WorkflowJob {
+    WorkflowJob(
+        id: id,
+        name: name,
+        projectSlug: "gh/org/repo",
+        status: status,
+        type: type,
+        approvedBy: approvedBy,
+        startedAt: nil,
+        stoppedAt: nil,
+        jobNumber: 10
+    )
 }

@@ -45,9 +45,30 @@ enum MenuPalette {
     static let approval = AppChrome.warning
 }
 
-private struct FilteredVercelProject {
+private struct FilteredVercelProject: Identifiable {
     let project: WatchedVercelProject
     let deployments: [VercelDeployment]
+
+    var id: WatchedVercelProject.ID { project.id }
+}
+
+/// Project sections with a hairline between them, so one repo's last row never reads as the
+/// next repo's first.
+private struct SeparatedSections<Item: Identifiable, Content: View>: View {
+    let items: [Item]
+    @ViewBuilder let section: (Item) -> Content
+
+    var body: some View {
+        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+            if index > 0 {
+                Rectangle()
+                    .fill(AppChrome.separator)
+                    .frame(height: 1)
+            }
+
+            section(item)
+        }
+    }
 }
 
 private struct MenuBarSnapshot {
@@ -148,6 +169,11 @@ private enum PendingMenuAction {
     }
 }
 
+private struct DeployTarget: Equatable {
+    let project: WatchedProject
+    var branch: String = ""
+}
+
 struct MenuBarContentView: View {
     private let popoverWidth: CGFloat = 424
 
@@ -158,7 +184,7 @@ struct MenuBarContentView: View {
     @State private var isSearchExpanded = false
     @State private var searchText = ""
     @State private var pendingAction: PendingMenuAction?
-    @State private var deployTarget: WatchedProject?
+    @State private var deployTarget: DeployTarget?
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
@@ -205,7 +231,8 @@ struct MenuBarContentView: View {
 
             if let deployTarget {
                 DeployBranchOverlay(
-                    project: deployTarget,
+                    project: deployTarget.project,
+                    branch: deployTarget.branch,
                     appState: appState,
                     onDismiss: { self.deployTarget = nil }
                 )
@@ -559,24 +586,70 @@ struct MenuBarContentView: View {
     }
 
     @ViewBuilder
+    private func pendingApprovals(_ approvals: [PendingApproval]) -> some View {
+        PendingApprovalsSection(
+            approvals: approvals,
+            armedAutoApprovalWorkflowIds: appState.armedAutoApprovalWorkflowIds,
+            onApprove: { approval in
+                pendingAction = .approve(approval)
+            },
+            onArmAutoApprove: { approval in
+                appState.armAutoApprove(for: approval.build)
+            },
+            onCancelAutoApprove: { approval in
+                appState.cancelAutoApprove(forWorkflowId: approval.workflowId)
+            },
+            onOpen: { approval in
+                openBuildUrl(approval.build.workflowUrl ?? approval.build.buildUrl)
+            }
+        )
+    }
+
+    private func projectSection(_ item: ProjectBuilds, isFiltered: Bool) -> some View {
+        ProjectSection(
+            project: item.project,
+            currentUser: appState.currentUser,
+            branches: item.branches,
+            deployedBranchesByEnv: appState.deployedBranchesByEnv(forSlug: item.project.slug),
+            deployingBranchesByEnv: appState.deployingBranchesByEnv(forSlug: item.project.slug),
+            workflowStatusByWorkflowId: appState.workflowStatusByWorkflowId,
+            isFiltered: isFiltered,
+            approvalCapableWorkflowIds: appState.approvalCapableWorkflowIds,
+            armedAutoApprovalWorkflowIds: appState.armedAutoApprovalWorkflowIds,
+            onRetry: { build in
+                pendingAction = .retry(build)
+            },
+            onCancel: { build in
+                pendingAction = .cancel(build)
+            },
+            onRedeploy: { build in
+                deployTarget = DeployTarget(project: item.project, branch: build.branch ?? "")
+            },
+            onArmAutoApprove: { build in
+                appState.armAutoApprove(for: build)
+            },
+            onCancelAutoApprove: { workflowId in
+                appState.cancelAutoApprove(forWorkflowId: workflowId)
+            },
+            onOpen: { build in
+                openBuildUrl(build.workflowUrl ?? build.buildUrl)
+            },
+            onOpenPR: { build in
+                openBuildUrl(build.pullRequestUrl)
+            },
+            onOpenRepo: { repoUrl in
+                openBuildUrl(repoUrl)
+            },
+            onDeploy: { project in
+                deployTarget = DeployTarget(project: project)
+            }
+        )
+    }
+
+    @ViewBuilder
     private func overviewContent(snapshot: MenuBarSnapshot) -> some View {
         if !snapshot.filteredPendingApprovals.isEmpty {
-            PendingApprovalsSection(
-                approvals: snapshot.filteredPendingApprovals,
-                armedAutoApprovalWorkflowIds: appState.armedAutoApprovalWorkflowIds,
-                onApprove: { approval in
-                    pendingAction = .approve(approval)
-                },
-                onArmAutoApprove: { approval in
-                    appState.armAutoApprove(for: approval.build)
-                },
-                onCancelAutoApprove: { approval in
-                    appState.cancelAutoApprove(forWorkflowId: approval.workflowId)
-                },
-                onOpen: { approval in
-                    openBuildUrl(approval.build.workflowUrl ?? approval.build.buildUrl)
-                }
-            )
+            pendingApprovals(snapshot.filteredPendingApprovals)
         }
 
         if !snapshot.filteredGroupedBuilds.isEmpty {
@@ -585,41 +658,8 @@ struct MenuBarContentView: View {
                 subtitle: snapshot.hasSearchQuery ? "Matching builds and approvals" : "Recent builds and approvals"
             )
 
-            ForEach(snapshot.filteredGroupedBuilds, id: \.project.id) { item in
-                ProjectSection(
-                    project: item.project,
-                    branches: item.branches,
-                    deployedBranchesByEnv: appState.deployedBranchesByEnv(forSlug: item.project.slug),
-                    deployingBranchesByEnv: appState.deployingBranchesByEnv(forSlug: item.project.slug),
-                    workflowStatusByWorkflowId: appState.workflowStatusByWorkflowId,
-                    isFiltered: snapshot.hasSearchQuery,
-                    approvalCapableWorkflowIds: appState.approvalCapableWorkflowIds,
-                    armedAutoApprovalWorkflowIds: appState.armedAutoApprovalWorkflowIds,
-                    onRetry: { build in
-                        pendingAction = .retry(build)
-                    },
-                    onCancel: { build in
-                        pendingAction = .cancel(build)
-                    },
-                    onArmAutoApprove: { build in
-                        appState.armAutoApprove(for: build)
-                    },
-                    onCancelAutoApprove: { workflowId in
-                        appState.cancelAutoApprove(forWorkflowId: workflowId)
-                    },
-                    onOpen: { build in
-                        openBuildUrl(build.workflowUrl ?? build.buildUrl)
-                    },
-                    onOpenPR: { build in
-                        openBuildUrl(build.pullRequestUrl)
-                    },
-                    onOpenRepo: { repoUrl in
-                        openBuildUrl(repoUrl)
-                    },
-                    onDeploy: { project in
-                        deployTarget = project
-                    }
-                )
+            SeparatedSections(items: snapshot.filteredGroupedBuilds) { item in
+                projectSection(item, isFiltered: snapshot.hasSearchQuery)
             }
         }
 
@@ -629,7 +669,7 @@ struct MenuBarContentView: View {
                 subtitle: snapshot.hasSearchQuery ? "Matching deployments" : "Watched deployments"
             )
 
-            ForEach(snapshot.filteredVercelProjects, id: \.project.id) { item in
+            SeparatedSections(items: snapshot.filteredVercelProjects) { item in
                 VercelProjectSection(
                     project: item.project,
                     deployments: item.deployments,
@@ -644,7 +684,11 @@ struct MenuBarContentView: View {
             snapshot.filteredVercelProjects.isEmpty {
             ProviderEmptyStateCard(
                 title: "No matching results",
-                message: "Try a different branch name or clear the filter to see all builds and deployments."
+                message: "No branch matches “\(trimmedSearchText)”. Clear the filter to see every build and deployment.",
+                icon: "magnifyingglass",
+                tint: AppChrome.textMuted,
+                actionTitle: "Clear filter",
+                action: { searchText = "" }
             )
         }
     }
@@ -652,67 +696,37 @@ struct MenuBarContentView: View {
     @ViewBuilder
     private func circleCIContent(snapshot: MenuBarSnapshot) -> some View {
         if !snapshot.filteredPendingApprovals.isEmpty {
-            PendingApprovalsSection(
-                approvals: snapshot.filteredPendingApprovals,
-                armedAutoApprovalWorkflowIds: appState.armedAutoApprovalWorkflowIds,
-                onApprove: { approval in
-                    pendingAction = .approve(approval)
-                },
-                onArmAutoApprove: { approval in
-                    appState.armAutoApprove(for: approval.build)
-                },
-                onCancelAutoApprove: { approval in
-                    appState.cancelAutoApprove(forWorkflowId: approval.workflowId)
-                },
-                onOpen: { approval in
-                    openBuildUrl(approval.build.workflowUrl ?? approval.build.buildUrl)
-                }
-            )
+            pendingApprovals(snapshot.filteredPendingApprovals)
         }
 
         if snapshot.filteredGroupedBuilds.isEmpty {
-            ProviderEmptyStateCard(
-                title: snapshot.hasSearchQuery ? "No matching CircleCI branches" : "No CircleCI builds yet",
-                message: snapshot.hasSearchQuery
-                    ? "Try a different branch name or clear the filter to see all tracked branches."
-                    : "Tracked projects will appear here after the next successful poll."
-            )
+            if snapshot.hasSearchQuery {
+                ProviderEmptyStateCard(
+                    title: "No matching CircleCI branches",
+                    message: "No tracked branch matches “\(trimmedSearchText)”.",
+                    icon: "magnifyingglass",
+                    tint: AppChrome.textMuted,
+                    actionTitle: "Clear filter",
+                    action: { searchText = "" }
+                )
+            } else if appState.watchedProjects.isEmpty {
+                ProviderEmptyStateCard(
+                    title: "No CircleCI projects watched",
+                    message: "Pick the repositories to watch, and their branches show up here.",
+                    icon: "checkmark.circle",
+                    actionTitle: "Open Settings",
+                    action: openSettings
+                )
+            } else {
+                ProviderEmptyStateCard(
+                    title: "Waiting for the first build",
+                    message: "The watched repositories have no recent builds. Branches show up after the next poll.",
+                    icon: "clock.arrow.circlepath"
+                )
+            }
         } else {
             ForEach(snapshot.filteredGroupedBuilds, id: \.project.id) { item in
-                ProjectSection(
-                    project: item.project,
-                    branches: item.branches,
-                    deployedBranchesByEnv: appState.deployedBranchesByEnv(forSlug: item.project.slug),
-                    deployingBranchesByEnv: appState.deployingBranchesByEnv(forSlug: item.project.slug),
-                    workflowStatusByWorkflowId: appState.workflowStatusByWorkflowId,
-                    isFiltered: snapshot.hasSearchQuery,
-                    approvalCapableWorkflowIds: appState.approvalCapableWorkflowIds,
-                    armedAutoApprovalWorkflowIds: appState.armedAutoApprovalWorkflowIds,
-                    onRetry: { build in
-                        pendingAction = .retry(build)
-                    },
-                    onCancel: { build in
-                        pendingAction = .cancel(build)
-                    },
-                    onArmAutoApprove: { build in
-                        appState.armAutoApprove(for: build)
-                    },
-                    onCancelAutoApprove: { workflowId in
-                        appState.cancelAutoApprove(forWorkflowId: workflowId)
-                    },
-                    onOpen: { build in
-                        openBuildUrl(build.workflowUrl ?? build.buildUrl)
-                    },
-                    onOpenPR: { build in
-                        openBuildUrl(build.pullRequestUrl)
-                    },
-                    onOpenRepo: { repoUrl in
-                        openBuildUrl(repoUrl)
-                    },
-                    onDeploy: { project in
-                        deployTarget = project
-                    }
-                )
+                projectSection(item, isFiltered: snapshot.hasSearchQuery)
             }
         }
     }
@@ -721,16 +735,24 @@ struct MenuBarContentView: View {
     private func vercelContent(snapshot: MenuBarSnapshot) -> some View {
         if appState.watchedVercelProjects.isEmpty {
             ProviderEmptyStateCard(
-                title: "No Vercel projects selected",
-                message: "Add Vercel projects in Settings to monitor deployment status here."
+                title: "No Vercel projects watched",
+                message: "Pick the projects to watch, and their deployments show up here.",
+                icon: "triangle",
+                tint: AppChrome.deploy,
+                actionTitle: "Open Settings",
+                action: openSettings
             )
         } else if snapshot.filteredVercelProjects.isEmpty {
             ProviderEmptyStateCard(
                 title: "No matching Vercel branches",
-                message: "Try a different branch name or clear the filter to see all recent deployments."
+                message: "No recent deployment matches “\(trimmedSearchText)”.",
+                icon: "magnifyingglass",
+                tint: AppChrome.textMuted,
+                actionTitle: "Clear filter",
+                action: { searchText = "" }
             )
         } else {
-            ForEach(snapshot.filteredVercelProjects, id: \.project.id) { item in
+            SeparatedSections(items: snapshot.filteredVercelProjects) { item in
                 VercelProjectSection(
                     project: item.project,
                     deployments: item.deployments,
@@ -1053,28 +1075,6 @@ struct ProviderSummaryCard: View {
                 .fill(AppChrome.separator)
                 .frame(height: 1)
         }
-    }
-}
-
-struct ProviderEmptyStateCard: View {
-    let title: String
-    let message: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(Typography.title)
-                .typographyTracking(forSize: 15)
-                .foregroundStyle(MenuPalette.ink)
-
-            Text(message)
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(MenuPalette.mutedInk)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 4)
-        .padding(.vertical, 12)
     }
 }
 

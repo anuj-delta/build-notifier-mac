@@ -12,11 +12,18 @@ final class AutoApprovalPoller: ObservableObject {
     private var scheduleTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
 
+    /// Gates already sent to CircleCI. A job keeps reporting `on_hold` for a few seconds
+    /// after it is approved, so without this the next poll approves it again.
+    private var approvedGateIds: Set<String> = []
+
     private let fetchWorkflowJobs: (String) async throws -> [WorkflowJob]
     private let approvePendingJob: (String, String) async throws -> Void
     private let sendAutoApprovedNotification: (ArmedAutoApproval, String, Bool) -> Void
     private let requestBuildRefresh: (AppState) -> Void
     private let now: () -> Date
+
+    /// Approve responses that mean the gate is gone rather than that the request was bad.
+    private static let gateRejectedCodes: Set<Int> = [400, 404, 409]
 
     weak var appState: AppState?
 
@@ -51,7 +58,7 @@ final class AutoApprovalPoller: ObservableObject {
 
     // MARK: - Start/Stop Polling
 
-    func startPolling(interval: TimeInterval = 120) {
+    func startPolling(interval: TimeInterval = 30) {
         stopPolling()
 
         isPolling = true
@@ -76,10 +83,14 @@ final class AutoApprovalPoller: ObservableObject {
         isPolling = false
     }
 
+    /// Polls run one after another. Cancelling a poll in flight could drop an approval
+    /// between the fetch and the POST, so a new poll waits for the current one.
     func poll() {
-        pollTask?.cancel()
-        pollTask = Task {
-            await checkNow()
+        let running = pollTask
+        pollTask = Task { @MainActor in
+            _ = await running?.value
+            guard !Task.isCancelled else { return }
+            await self.checkNow()
         }
     }
 
@@ -94,6 +105,7 @@ final class AutoApprovalPoller: ObservableObject {
 
         let armedApprovals = Array(appState.armedAutoApprovals.values)
         guard !armedApprovals.isEmpty else {
+            approvedGateIds.removeAll()
             lastPollTime = now()
             error = nil
             return
@@ -109,23 +121,18 @@ final class AutoApprovalPoller: ObservableObject {
             do {
                 let jobs = try await fetchWorkflowJobs(armedApproval.workflowId)
 
-                if let pendingJob = jobs.first(where: { $0.isPendingApproval }) {
-                    try await approvePendingJob(armedApproval.workflowId, pendingJob.id)
-
-                    appState.armedAutoApprovals.removeValue(forKey: armedApproval.workflowId)
-                    requestBuildRefresh(appState)
-
-                    if appState.preferences.notificationsEnabled {
-                        sendAutoApprovedNotification(
-                            armedApproval,
-                            pendingJob.name,
-                            appState.preferences.notificationSoundEnabled
-                        )
+                var approved = false
+                for gate in jobs where gate.isPendingApproval && !approvedGateIds.contains(gate.id) {
+                    if try await approve(gate, for: armedApproval, appState: appState) {
+                        approved = true
                     }
-                    continue
+                }
+                if approved {
+                    requestBuildRefresh(appState)
                 }
 
-                if shouldClearArmedApproval(for: jobs) {
+                // A workflow can hold more than one gate, so stay armed until it is done.
+                if !jobs.isEmpty, !jobs.contains(where: \.isActive) {
                     appState.armedAutoApprovals.removeValue(forKey: armedApproval.workflowId)
                 }
             } catch is CancellationError {
@@ -138,13 +145,27 @@ final class AutoApprovalPoller: ObservableObject {
         lastPollTime = now()
     }
 
-    private func shouldClearArmedApproval(for jobs: [WorkflowJob]) -> Bool {
-        guard !jobs.isEmpty else { return false }
-
-        if jobs.contains(where: \.canStillRequireApproval) {
+    /// Approves one gate and reports whether CircleCI accepted it.
+    private func approve(
+        _ gate: WorkflowJob,
+        for armedApproval: ArmedAutoApproval,
+        appState: AppState
+    ) async throws -> Bool {
+        do {
+            try await approvePendingJob(armedApproval.workflowId, gate.id)
+            approvedGateIds.insert(gate.id)
+        } catch CircleCIError.httpError(let code, _) where Self.gateRejectedCodes.contains(code) {
+            approvedGateIds.insert(gate.id)
             return false
         }
 
+        if appState.preferences.notificationsEnabled {
+            sendAutoApprovedNotification(
+                armedApproval,
+                gate.name,
+                appState.preferences.notificationSoundEnabled
+            )
+        }
         return true
     }
 }

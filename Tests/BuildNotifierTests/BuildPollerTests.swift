@@ -355,6 +355,44 @@ final class BuildPollerTests: XCTestCase {
         XCTAssertEqual(approvalNotifications.first?.build.branch, "main")
     }
 
+    /// A fan-out workflow deploys one service while a second gate waits. The waiting gate is
+    /// still listed, so the menu can approve it without a trip to CircleCI.
+    func testGateWaitingBesideARunningJobIsListed() async throws {
+        let builds = [
+            makeBuild(buildNum: 96, branch: "main", committerName: "Test Author", committerEmail: "author@example.test", workflowId: "wf-main")
+        ]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in builds },
+            fetchWorkflowJobs: { _ in
+                [
+                    Self.runningJob,
+                    WorkflowJob(
+                        id: "gate-rails",
+                        name: "deploy-approval-ind-rails",
+                        projectSlug: "gh/delta-exchange/api-console",
+                        status: "on_hold",
+                        type: "approval",
+                        approvedBy: nil,
+                        startedAt: nil,
+                        stoppedAt: nil,
+                        jobNumber: nil
+                    )
+                ]
+            },
+            fetchWorkflow: { workflowId in
+                WorkflowDetails(id: workflowId, name: "build-and-deploy", status: "on_hold", pipelineId: "pipeline-\(workflowId)")
+            },
+            fetchPipeline: { pipelineId in
+                Self.makePipeline(id: pipelineId, actorLogin: "test-author")
+            }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+
+        XCTAssertEqual(appState.pendingApprovals.map(\.jobName), ["deploy-approval-ind-rails"])
+    }
+
     func testAllModeStillReturnsAllRecentBuilds() async throws {
         let builds = [
             makeBuild(buildNum: 530, branch: "main", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-main"),

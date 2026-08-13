@@ -86,4 +86,9 @@ struct User: Codable {
         case avatarUrl = "avatar_url"
         case selectedEmail = "selected_email"
     }
+
+    /// The handles a commit can carry for this user, lowercased for comparison.
+    var identities: Set<String> {
+        Set([name, login, selectedEmail].compactMap { $0?.lowercased() })
+    }
 }

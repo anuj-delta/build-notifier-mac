@@ -29,8 +29,10 @@ struct WorkflowJob: Codable, Identifiable, Equatable {
         type == "approval"
     }
     
+    /// Only `on_hold` means CircleCI is waiting on a human. A `blocked` approval job is
+    /// waiting on upstream jobs and cannot be approved yet.
     var isPendingApproval: Bool {
-        isApprovalJob && (status == "on_hold" || status == "blocked") && approvedBy == nil
+        isApprovalJob && status == "on_hold" && approvedBy == nil
     }
     
     var isApproved: Bool {
@@ -48,7 +50,7 @@ struct WorkflowJob: Codable, Identifiable, Equatable {
         }
     }
 
-    var keepsWorkflowActionable: Bool {
+    var isActive: Bool {
         switch status {
         case "running", "queued", "blocked", "on_hold":
             return true
