@@ -1,236 +1,18 @@
 import SwiftUI
 import AppKit
 
-extension View {
-    func pointingHandCursor() -> some View {
-        cursor(.pointingHand)
-    }
-
-    /// Shows `cursor` while hovered. Uses the AppKit cursor stack (`push`/`pop`) rather
-    /// than `set()` so the cursor survives view redraws - otherwise an animating sibling
-    /// (e.g. the shimmer) resets it every frame and the pointer flickers.
-    func cursor(_ cursor: NSCursor) -> some View {
-        modifier(HoverCursor(cursor: cursor))
-    }
-}
-
-private struct HoverCursor: ViewModifier {
-    let cursor: NSCursor
-
-    @State private var pushed = false
-
-    func body(content: Content) -> some View {
-        content
-            .onHover { hovering in
-                if hovering {
-                    guard !pushed else { return }
-                    cursor.push()
-                    pushed = true
-                } else {
-                    guard pushed else { return }
-                    NSCursor.pop()
-                    pushed = false
-                }
-            }
-            .onDisappear {
-                if pushed {
-                    NSCursor.pop()
-                    pushed = false
-                }
-            }
-    }
-}
-
-/// A "currently deployed" / "deploying now" marker shown on a build row for one environment.
+/// A "currently deployed" / "deploying now" marker shown on a branch row for one environment.
 struct DeployBadge: Identifiable, Equatable {
     let env: DeployEnvironment
     let isDeploying: Bool
     var id: DeployEnvironment { env }
 }
 
-struct ProjectSection: View {
-    let project: WatchedProject
-    let currentUser: User?
-    let branches: [BranchBuild]
-    let deployedBranchesByEnv: [DeployEnvironment: String]
-    let deployingBranchesByEnv: [DeployEnvironment: String]
-    let workflowStatusByWorkflowId: [String: String]
-    let isFiltered: Bool
-    let approvalCapableWorkflowIds: Set<String>
-    let armedAutoApprovalWorkflowIds: Set<String>
-    let onRetry: (Build) -> Void
-    let onCancel: (Build) -> Void
-    let onRedeploy: (Build) -> Void
-    let onArmAutoApprove: (Build) -> Void
-    let onCancelAutoApprove: (String) -> Void
-    let onOpen: (Build) -> Void
-    let onOpenPR: (Build) -> Void
-    let onOpenRepo: (String) -> Void
-    let onDeploy: (WatchedProject) -> Void
-
-    @State private var isExpanded = true
-    @State private var isRepoLinkHovered = false
-    @State private var isHeaderHovered = false
-    @State private var isDeployHovered = false
-
-    private var repoUrl: String? {
-        branches.first?.build.vcsUrl
-    }
-
-    private func repositoryPath(highlighted: Bool) -> some View {
-        Text(project.repoName)
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(highlighted ? AppChrome.accent : AppChrome.text)
-            .lineLimit(1)
-            .truncationMode(.tail)
-    }
-
-    private func repositoryLink(_ repoUrl: String) -> some View {
-        Button {
-            onOpenRepo(repoUrl)
-        } label: {
-            HStack(alignment: .center, spacing: 5) {
-                repositoryPath(highlighted: isRepoLinkHovered)
-
-                if isRepoLinkHovered {
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(AppChrome.accent)
-                        .transition(.opacity)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isRepoLinkHovered = hovering
-        }
-        .pointingHandCursor()
-        .help("Open repository on the web")
-        .animation(Motion.hover, value: isRepoLinkHovered)
-    }
-
-    private var deployButton: some View {
-        Button {
-            onDeploy(project)
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "paperplane.fill")
-                    .font(.system(size: 9, weight: .semibold))
-                Text("Deploy")
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .foregroundStyle(isDeployHovered ? AppChrome.accent : AppChrome.textMuted)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(
-                Capsule().fill(isDeployHovered ? AppChrome.accentSoft : Color.clear)
-            )
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isDeployHovered = hovering
-        }
-        .pointingHandCursor()
-        .help("Deploy a branch to devnet")
-        .animation(Motion.hover, value: isDeployHovered)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(Motion.spring) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(alignment: .center, spacing: 6) {
-                    if let repoUrl {
-                        repositoryLink(repoUrl)
-                            .layoutPriority(1)
-                    } else {
-                        repositoryPath(highlighted: false)
-                            .layoutPriority(1)
-                    }
-
-                    Spacer(minLength: 6)
-
-                    deployButton
-                        .opacity(isHeaderHovered ? 1 : 0)
-                        .allowsHitTesting(isHeaderHovered)
-
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(AppChrome.textMuted)
-                        .frame(width: 12, height: 12)
-                }
-                .padding(.leading, 0)
-                .padding(.trailing, 12)
-                .padding(.vertical, 9)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .onHover { hovering in
-                isHeaderHovered = hovering
-            }
-            .animation(Motion.hover, value: isHeaderHovered)
-            .contextMenu {
-                Button("Deploy a Branch…") { onDeploy(project) }
-                if let repoUrl {
-                    Button("Open Repository on the Web") { onOpenRepo(repoUrl) }
-                }
-            }
-
-            if isExpanded {
-                VStack(spacing: 2) {
-                    ForEach(branches) { item in
-                        let build = item.build
-                        let workflowId = build.workflows?.workflowId
-                        BuildRow(
-                            build: build,
-                            currentUser: currentUser,
-                            span: item.span,
-                            resolvedWorkflowStatus: workflowId.flatMap { workflowStatusByWorkflowId[$0] },
-                            canAutoApprove: workflowId.map { approvalCapableWorkflowIds.contains($0) } ?? false,
-                            isAutoApproveArmed: workflowId.map { armedAutoApprovalWorkflowIds.contains($0) } ?? false,
-                            deployBadges: deployBadges(for: build),
-                            onRetry: { onRetry(build) },
-                            onCancel: { onCancel(build) },
-                            onRedeploy: { onRedeploy(build) },
-                            onAutoApprove: { onArmAutoApprove(build) },
-                            onCancelAutoApprove: {
-                                if let workflowId = build.workflows?.workflowId {
-                                    onCancelAutoApprove(workflowId)
-                                }
-                            },
-                            onOpen: { onOpen(build) },
-                            onOpenPR: { onOpenPR(build) }
-                        )
-                    }
-                }
-                .padding(.bottom, 4)
-            }
-        }
-    }
-
-    /// Deploy badges for this build's branch, in a stable order. An in-flight deploy takes
-    /// precedence over a live one for the same environment so the row reads as "deploying".
-    private func deployBadges(for build: Build) -> [DeployBadge] {
-        guard let branch = build.branch, !branch.isEmpty else { return [] }
-        return DeployEnvironment.allCases.compactMap { env in
-            if deployingBranchesByEnv[env] == branch { return DeployBadge(env: env, isDeploying: true) }
-            if deployedBranchesByEnv[env] == branch { return DeployBadge(env: env, isDeploying: false) }
-            return nil
-        }
-    }
-}
-
-struct BuildRow: View {
+struct BranchRow: View {
     private let trailingActionRowHeight: CGFloat = 14
 
-    let build: Build
+    let activity: BranchActivity
     let currentUser: User?
-    let span: WorkflowSpan
     let resolvedWorkflowStatus: String?
     let canAutoApprove: Bool
     let isAutoApproveArmed: Bool
@@ -245,28 +27,36 @@ struct BuildRow: View {
 
     @State private var isHovered = false
 
+    private var build: Build? { activity.build }
+
+    private var newestDeployment: BranchDeployment? { activity.deployments.first }
+
     var body: some View {
         Button {
-            onOpen()
+            open()
         } label: {
             HStack(alignment: .top, spacing: 8) {
                 statusGutter
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(build.branch ?? "unknown")
+                        Text(activity.branch)
                             .font(Typography.rowTitle)
                             .foregroundStyle(AppChrome.text)
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .shimmering(active: status.isInProgress)
 
-                        if build.pullRequestUrl != nil {
+                        if let build, build.pullRequestUrl != nil {
                             PullRequestBadge(
                                 number: build.pullRequestNumber,
                                 title: build.pullRequestTitle,
                                 action: onOpenPR
                             )
+                        }
+
+                        if !activity.deployments.isEmpty {
+                            vercelChips
                         }
 
                         if isAutoApproveArmed {
@@ -276,15 +66,15 @@ struct BuildRow: View {
                                 .fixedSize(horizontal: true, vertical: false)
                         }
 
-                        if let branch = build.branch, !branch.isEmpty {
-                            CopyBranchButton(branch: branch, isRowHovered: isHovered)
+                        if !activity.branch.isEmpty {
+                            CopyBranchButton(branch: activity.branch, isRowHovered: isHovered)
                         }
 
                         Spacer(minLength: 0)
                     }
 
                     HStack(spacing: 5) {
-                        if let author = build.authorDisplayName(excluding: currentUser) {
+                        if let author {
                             Text(author)
                                 .font(Typography.rowAuthor)
                                 .foregroundStyle(AppChrome.textSecondary)
@@ -296,7 +86,7 @@ struct BuildRow: View {
                                 .foregroundStyle(AppChrome.textMuted)
                         }
 
-                        Text(build.pullRequestTitle ?? build.rowSubject)
+                        Text(subject)
                             .font(Typography.rowMeta)
                             .foregroundStyle(AppChrome.textSecondary)
                             .lineLimit(1)
@@ -306,7 +96,7 @@ struct BuildRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .trailing, spacing: 6) {
-                    Text(span.label(inProgress: status.isInProgress))
+                    Text(timeLabel)
                         .font(Typography.rowMeta)
                         .foregroundStyle(AppChrome.textMuted)
                         .monospacedDigit()
@@ -348,9 +138,14 @@ struct BuildRow: View {
         .pointingHandCursor()
     }
 
-    /// Prefer the authoritative v2 workflow status (matches CircleCI's UI); fall back to the
-    /// v1.1 build status when v2 isn't resolved yet or reports a value we don't recognize.
+    /// The build's status when there is one, otherwise the newest deployment's. Prefer the
+    /// authoritative v2 workflow status (matches CircleCI's UI); fall back to the v1.1 build
+    /// status when v2 isn't resolved yet or reports a value we don't recognize.
     private var status: RowStatus {
+        guard let build else {
+            guard let deployment = newestDeployment?.deployment else { return .neutral }
+            return RowStatus(deployment.deploymentStatus)
+        }
         if let resolvedWorkflowStatus,
            let v2Status = RowStatus(circleCIWorkflowStatus: resolvedWorkflowStatus) {
             return v2Status
@@ -371,6 +166,42 @@ struct BuildRow: View {
         }
         .frame(width: RowLayout.statusColumnWidth, alignment: .center)
         .padding(.top, 1)
+    }
+
+    private var author: String? {
+        if let build { return build.authorDisplayName(excluding: currentUser) }
+        return newestDeployment?.deployment.authorDisplayName
+    }
+
+    private var subject: String {
+        if let build { return build.pullRequestTitle ?? build.rowSubject }
+        return newestDeployment?.deployment.truncatedCommitMessage ?? "No commit message"
+    }
+
+    private var timeLabel: String {
+        if let span = activity.span { return span.label(inProgress: status.isInProgress) }
+        return newestDeployment?.deployment.relativeTime ?? "unknown"
+    }
+
+    /// At most two chips, so a repository with several Vercel projects doesn't push the branch
+    /// name out of the row. The rest are counted.
+    private var vercelChips: some View {
+        let shown = activity.deployments.prefix(2)
+        let overflow = activity.deployments.count - shown.count
+
+        return HStack(spacing: 4) {
+            ForEach(shown) { item in
+                VercelChip(item: item)
+            }
+
+            if overflow > 0 {
+                Text("+\(overflow)")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(AppChrome.textMuted)
+                    .monospacedDigit()
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var deployIndicator: some View {
@@ -395,45 +226,56 @@ struct BuildRow: View {
 
     private var trailingActions: some View {
         HStack(spacing: 8) {
-            if build.buildStatus.isFailure {
-                RowActionButton(
-                    systemName: "arrow.clockwise",
-                    title: "Retry"
-                ) {
-                    onRetry()
+            if let build {
+                if build.buildStatus.isFailure {
+                    RowActionButton(
+                        systemName: "arrow.clockwise",
+                        title: "Retry"
+                    ) {
+                        onRetry()
+                    }
                 }
-            }
 
-            if canAutoApprove || isAutoApproveArmed {
-                RowActionButton(
-                    systemName: isAutoApproveArmed ? "checkmark.circle.fill" : "checkmark.circle",
-                    title: isAutoApproveArmed ? "Cancel Auto-Approve" : "Auto-Approve",
-                    tint: isAutoApproveArmed ? AppChrome.accent : AppChrome.textMuted
-                ) {
-                    if isAutoApproveArmed {
-                        onCancelAutoApprove()
-                    } else {
-                        onAutoApprove()
+                if canAutoApprove || isAutoApproveArmed {
+                    RowActionButton(
+                        systemName: isAutoApproveArmed ? "checkmark.circle.fill" : "checkmark.circle",
+                        title: isAutoApproveArmed ? "Cancel Auto-Approve" : "Auto-Approve",
+                        tint: isAutoApproveArmed ? AppChrome.accent : AppChrome.textMuted
+                    ) {
+                        if isAutoApproveArmed {
+                            onCancelAutoApprove()
+                        } else {
+                            onAutoApprove()
+                        }
+                    }
+                }
+
+                if canRedeploy {
+                    RowActionButton(
+                        systemName: "paperplane",
+                        title: "Redeploy \(activity.branch)"
+                    ) {
+                        onRedeploy()
+                    }
+                }
+
+                if build.buildStatus.isRunning {
+                    RowActionButton(
+                        systemName: "xmark.circle",
+                        title: "Cancel",
+                        hoverTint: AppChrome.danger
+                    ) {
+                        onCancel()
                     }
                 }
             }
 
-            if canRedeploy {
+            if let commitUrl {
                 RowActionButton(
-                    systemName: "paperplane",
-                    title: "Redeploy \(build.branch ?? "this branch")"
+                    systemName: "shippingbox",
+                    title: "Open this commit's deployment"
                 ) {
-                    onRedeploy()
-                }
-            }
-
-            if build.buildStatus.isRunning {
-                RowActionButton(
-                    systemName: "xmark.circle",
-                    title: "Cancel",
-                    hoverTint: AppChrome.danger
-                ) {
-                    onCancel()
+                    AppWindowManager.openFromMenu(commitUrl)
                 }
             }
         }
@@ -450,7 +292,13 @@ struct BuildRow: View {
     }
 
     private var hasActions: Bool {
-        build.buildStatus.isFailure || build.buildStatus.isRunning || canAutoApprove || isAutoApproveArmed || canRedeploy
+        guard let build else { return commitUrl != nil }
+        return build.buildStatus.isFailure
+            || build.buildStatus.isRunning
+            || canAutoApprove
+            || isAutoApproveArmed
+            || canRedeploy
+            || commitUrl != nil
     }
 
     /// Actions are revealed on hover, or kept visible while auto-approve is armed. A row with
@@ -462,13 +310,90 @@ struct BuildRow: View {
     /// v1.1 and v2 disagree for a few seconds after a workflow finishes, so both have to call it
     /// stopped before Redeploy appears beside Cancel.
     private var canRedeploy: Bool {
-        status != .onHold
+        guard let build else { return false }
+        return status != .onHold
             && !status.isInProgress
             && !build.buildStatus.isRunning
             && !build.buildStatus.isPending
-            && !(build.branch ?? "").isEmpty
+            && !activity.branch.isEmpty
     }
 
+    /// The deployment of one commit, which the row itself never opens - the row opens the branch
+    /// preview, which moves on with every new push.
+    private var commitUrl: String? {
+        newestDeployment?.deployment.deploymentUrl
+    }
+
+    private var branchPreviewUrl: String? {
+        guard let item = newestDeployment else { return nil }
+        return item.deployment.branchPreviewUrl(scopeSlug: item.project.teamSlug)
+            ?? item.deployment.deploymentUrl
+    }
+
+    private func open() {
+        if let build {
+            AppWindowManager.openFromMenu(build.workflowUrl ?? build.buildUrl)
+            return
+        }
+        AppWindowManager.openFromMenu(branchPreviewUrl)
+    }
+}
+
+/// One Vercel project's newest deployment on this branch: a bare colored triangle, so a row
+/// carrying both providers stays scannable.
+private struct VercelChip: View {
+    let item: BranchDeployment
+
+    @State private var isHovered = false
+
+    private var status: RowStatus {
+        RowStatus(item.deployment.deploymentStatus)
+    }
+
+    /// The triangle carries the state on its own, so a running deploy gets the warning color
+    /// rather than the muted one `glyphColor` uses behind the spinner.
+    private var tint: Color {
+        switch status {
+        case .success: return AppChrome.success
+        case .failed: return AppChrome.danger
+        case .running, .queued: return AppChrome.warning
+        case .onHold, .canceled, .neutral: return AppChrome.textMuted
+        }
+    }
+
+    var body: some View {
+        Button(action: open) {
+            Image(systemName: "triangle.fill")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(tint)
+                .symbolEffect(.pulse, options: .repeating, isActive: status.isInProgress)
+                .frame(width: 16, height: 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(isHovered ? AppChrome.hover : Color.clear)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .fixedSize(horizontal: true, vertical: false)
+        .onHover { isHovered = $0 }
+        .pointingHandCursor()
+        .help(tooltip)
+        .accessibilityLabel(tooltip)
+        .animation(Motion.hover, value: isHovered)
+    }
+
+    private var tooltip: String {
+        let target = item.deployment.isProduction ? "production" : "preview"
+        return "\(item.project.projectName) \(target) · \(item.deployment.deploymentStatus.displayName)"
+            + " · \(item.deployment.relativeTime)"
+    }
+
+    private func open() {
+        let url = item.deployment.branchPreviewUrl(scopeSlug: item.project.teamSlug)
+            ?? item.deployment.deploymentUrl
+        AppWindowManager.openFromMenu(url)
+    }
 }
 
 /// A row action reads as live before the click: it lights up under the pointer and dips on

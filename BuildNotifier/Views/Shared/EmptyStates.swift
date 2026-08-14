@@ -50,20 +50,6 @@ struct ProviderEmptyStateCard: View {
     }
 }
 
-/// One quiet line under a project header that has no rows of its own.
-struct EmptySectionNote: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 12))
-            .foregroundStyle(AppChrome.textMuted.opacity(0.7))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
-            .padding(.bottom, 4)
-    }
-}
-
 private struct EmptyStateActionStyle: ButtonStyle {
     let tint: Color
 

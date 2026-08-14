@@ -212,76 +212,184 @@ final class AppState {
 
     static let maxBranchesPerProject = 5
 
-    /// Branches to show per project, newest first, each with the build to display.
-    /// Stored rather than computed: the menu rebuilds this on every redraw otherwise,
-    /// including on every keystroke in its search field.
-    private(set) var groupedBuilds: [ProjectBuilds] = []
+    /// One card per repository, newest first, each carrying the branches to show and the
+    /// build and deployments on them. Stored rather than computed: the menu rebuilds this on
+    /// every redraw otherwise, including on every keystroke in its search field.
+    private(set) var repoCards: [RepoCard] = []
 
-    func regroupBuilds() {
-        var result: [(group: ProjectBuilds, latest: Date)] = []
+    func regroupCards() {
+        var vercelByRepoSlug: [String: [WatchedVercelProject]] = [:]
+        var unlinkedVercel: [WatchedVercelProject] = []
+        for project in watchedVercelProjects {
+            if let slug = project.repoSlug?.lowercased() {
+                vercelByRepoSlug[slug, default: []].append(project)
+            } else {
+                unlinkedVercel.append(project)
+            }
+        }
+
+        var result: [(card: RepoCard, latest: Date)] = []
 
         for project in watchedProjects {
-            guard let builds = buildsByProject[project.slug] else { continue }
-
-            var buildsByBranch: [String: [Build]] = [:]
-            for build in builds {
-                let branch = build.branch ?? "unknown"
-                buildsByBranch[branch, default: []].append(build)
-            }
-
-            // Keep the most recently active branches so feature branches surface
-            // alongside main/develop instead of being crowded out. Rank and pick
-            // by activityDate rather than trusting the API's response order, so the
-            // right branch/build wins even if buildsByProject is ever reordered.
-            let latestByBranch = buildsByBranch.mapValues { builds in
-                builds.compactMap(\.activityDate).max() ?? .distantPast
-            }
-            let branchesByRecency = buildsByBranch.keys.sorted { b1, b2 in
-                let d1 = latestByBranch[b1] ?? .distantPast
-                let d2 = latestByBranch[b2] ?? .distantPast
-                if d1 != d2 { return d1 > d2 }
-                return b1 < b2
-            }
-
-            // A branch live (or mid-deploy) on any environment must always show, even when it
-            // is older than the top-N by recency - otherwise a long-lived deploy branch (e.g.
-            // the one pinned to sigma) silently drops off the list and its badge never renders.
-            var deployedBranches: Set<String> = []
-            for env in DeployEnvironment.allCases {
-                if let branch = deployedBranchBySlugByEnv[env]?[project.slug] { deployedBranches.insert(branch) }
-                if let branch = deployingBranchBySlugByEnv[env]?[project.slug] { deployedBranches.insert(branch) }
-            }
-
-            var selectedBranches = Array(branchesByRecency.prefix(Self.maxBranchesPerProject))
-            for branch in branchesByRecency where deployedBranches.contains(branch) && !selectedBranches.contains(branch) {
-                selectedBranches.append(branch)
-            }
-
-            let branches: [BranchBuild] = selectedBranches.compactMap { branch in
-                guard let jobs = buildsByBranch[branch],
-                      let latest = jobs.max(by: {
-                          ($0.activityDate ?? .distantPast) < ($1.activityDate ?? .distantPast)
-                      }) else { return nil }
-                return BranchBuild(
-                    branch: branch,
-                    build: latest,
-                    span: WorkflowSpan(jobs: siblings(of: latest, in: jobs))
-                )
-            }
-
-            result.append((
-                group: ProjectBuilds(project: project, branches: branches),
-                latest: latestByBranch.values.max() ?? .distantPast
+            let vercel = vercelByRepoSlug.removeValue(forKey: project.slug.lowercased()) ?? []
+            result.append(makeCard(
+                id: project.id,
+                title: project.repoName,
+                circleCI: project,
+                vercel: vercel
             ))
         }
 
-        // Sort projects by recent activity (latest build timestamp), then name.
-        groupedBuilds = result
+        // Vercel projects deploying a repository CircleCI isn't watching get their own card,
+        // one per repository so two projects on the same repo (e.g. web and docs) stay together.
+        for slug in vercelByRepoSlug.keys.sorted() {
+            let projects = vercelByRepoSlug[slug] ?? []
+            guard let first = projects.first else { continue }
+            result.append(makeCard(
+                id: "vercel:\(first.id)",
+                title: slug.split(separator: "/").last.map(String.init) ?? slug,
+                circleCI: nil,
+                vercel: projects
+            ))
+        }
+
+        for project in unlinkedVercel {
+            result.append(makeCard(
+                id: "vercel:\(project.id)",
+                title: project.projectName,
+                circleCI: nil,
+                vercel: [project]
+            ))
+        }
+
+        repoCards = result
+            .filter { !$0.card.branches.isEmpty }
             .sorted { lhs, rhs in
                 if lhs.latest != rhs.latest { return lhs.latest > rhs.latest }
-                return lhs.group.project.displayName.lowercased() < rhs.group.project.displayName.lowercased()
+                if lhs.card.title != rhs.card.title {
+                    return lhs.card.title.lowercased() < rhs.card.title.lowercased()
+                }
+                return lhs.card.id < rhs.card.id
             }
-            .map(\.group)
+            .map(\.card)
+    }
+
+    /// One repository's card, and the timestamp it ranks by: the newest activity on it from
+    /// either provider.
+    private func makeCard(
+        id: String,
+        title: String,
+        circleCI: WatchedProject?,
+        vercel: [WatchedVercelProject]
+    ) -> (card: RepoCard, latest: Date) {
+        var buildsByBranch: [String: [Build]] = [:]
+        for build in circleCI.flatMap({ buildsByProject[$0.slug] }) ?? [] {
+            buildsByBranch[build.branch ?? "unknown", default: []].append(build)
+        }
+
+        var deploymentsByBranch: [String: [BranchDeployment]] = [:]
+        for project in vercel {
+            for deployment in deploymentsByProject[project.id] ?? [] {
+                let branch = deployment.meta?.branch ?? "unknown"
+                deploymentsByBranch[branch, default: []]
+                    .append(BranchDeployment(project: project, deployment: deployment))
+            }
+        }
+
+        // Keep the most recently active branches so feature branches surface alongside
+        // main/develop instead of being crowded out. Rank and pick by timestamp rather than
+        // trusting either API's response order, so the right branch wins even if the stored
+        // builds or deployments are ever reordered.
+        var latestByBranch: [String: Date] = [:]
+        for (branch, builds) in buildsByBranch {
+            latestByBranch[branch] = builds.compactMap(\.activityDate).max() ?? .distantPast
+        }
+        for (branch, deployments) in deploymentsByBranch {
+            let latest = deployments.map(\.deployment.createdDate).max() ?? .distantPast
+            latestByBranch[branch] = max(latestByBranch[branch] ?? .distantPast, latest)
+        }
+
+        let branchesByRecency = latestByBranch.keys.sorted { b1, b2 in
+            let d1 = latestByBranch[b1] ?? .distantPast
+            let d2 = latestByBranch[b2] ?? .distantPast
+            if d1 != d2 { return d1 > d2 }
+            return b1 < b2
+        }
+
+        let pinned = pinnedBranches(circleCI: circleCI, vercel: vercel)
+        var selectedBranches = Array(branchesByRecency.prefix(Self.maxBranchesPerProject))
+        for branch in branchesByRecency where pinned.contains(branch) && !selectedBranches.contains(branch) {
+            selectedBranches.append(branch)
+        }
+
+        let branches: [BranchActivity] = selectedBranches.map { branch in
+            let jobs = buildsByBranch[branch] ?? []
+            let build = jobs.max(by: {
+                ($0.activityDate ?? .distantPast) < ($1.activityDate ?? .distantPast)
+            })
+            return BranchActivity(
+                branch: branch,
+                build: build,
+                span: build.map { WorkflowSpan(jobs: siblings(of: $0, in: jobs)) },
+                deployments: newestPerTarget(deploymentsByBranch[branch] ?? [], order: vercel)
+            )
+        }
+
+        return (
+            card: RepoCard(id: id, title: title, circleCI: circleCI, vercel: vercel, branches: branches),
+            latest: latestByBranch.values.max() ?? .distantPast
+        )
+    }
+
+    /// Branches that must show even when they are older than the top-N by recency: the branch
+    /// live (or mid-deploy) on each environment, and the branch in production on Vercel.
+    /// Otherwise a long-lived deploy branch silently drops off and its badge never renders.
+    private func pinnedBranches(circleCI: WatchedProject?, vercel: [WatchedVercelProject]) -> Set<String> {
+        var pinned: Set<String> = []
+
+        if let slug = circleCI?.slug {
+            for env in DeployEnvironment.allCases {
+                if let branch = deployedBranchBySlugByEnv[env]?[slug] { pinned.insert(branch) }
+                if let branch = deployingBranchBySlugByEnv[env]?[slug] { pinned.insert(branch) }
+            }
+        }
+
+        for project in vercel {
+            let production = (deploymentsByProject[project.id] ?? [])
+                .filter(\.isProduction)
+                .max(by: { $0.createdDate < $1.createdDate })
+            if let branch = production?.meta?.branch { pinned.insert(branch) }
+        }
+
+        return pinned
+    }
+
+    /// One deployment per project and target, newest first, so a branch redeployed ten times
+    /// shows one chip per environment rather than ten. Ordered by the project's position in the
+    /// watchlist, and production before preview within a project.
+    private func newestPerTarget(
+        _ deployments: [BranchDeployment],
+        order: [WatchedVercelProject]
+    ) -> [BranchDeployment] {
+        var newest: [String: BranchDeployment] = [:]
+        for item in deployments {
+            let key = "\(item.project.id)#\(item.deployment.target ?? "preview")"
+            if let existing = newest[key], existing.deployment.createdDate >= item.deployment.createdDate {
+                continue
+            }
+            newest[key] = item
+        }
+
+        let projectRank = Dictionary(
+            uniqueKeysWithValues: order.enumerated().map { ($0.element.id, $0.offset) }
+        )
+        return newest.values.sorted { lhs, rhs in
+            let lhsRank = projectRank[lhs.project.id] ?? order.count
+            let rhsRank = projectRank[rhs.project.id] ?? order.count
+            if lhsRank != rhsRank { return lhsRank < rhsRank }
+            if lhs.deployment.isProduction != rhs.deployment.isProduction { return lhs.deployment.isProduction }
+            return lhs.deployment.createdDate > rhs.deployment.createdDate
+        }
     }
 
     /// The other jobs of `build`'s workflow. A build with no workflow id stands alone rather
@@ -425,7 +533,7 @@ final class AppState {
     }
     
     func startPolling() {
-        regroupBuilds()
+        regroupCards()
         poller.startPolling(interval: TimeInterval(preferences.pollingIntervalSeconds))
         autoApprovalPoller.startPolling()
     }
@@ -642,7 +750,7 @@ final class AppState {
         armedAutoApprovals = [:]
         preferences.watchedProjects = []
         preferences.save()
-        regroupBuilds()
+        regroupCards()
         currentScreen = .onboarding
     }
     
@@ -660,7 +768,7 @@ final class AppState {
         workflowApprovalSupport = [:]
         armedAutoApprovals = [:]
         // Note: watchedProjects is preserved
-        regroupBuilds()
+        regroupCards()
         currentScreen = .onboarding
     }
     
@@ -672,7 +780,7 @@ final class AppState {
         }
         // React immediately when the deploy-loader toggle changes.
         refreshDeploySpinner()
-        regroupBuilds()
+        regroupCards()
     }
     
     // MARK: - Vercel Actions
@@ -748,6 +856,7 @@ final class AppState {
         if let index = preferences.watchedVercelProjects.firstIndex(where: { $0.id == project.id }) {
             preferences.watchedVercelProjects[index] = project
             preferences.save()
+            regroupCards()
         }
     }
     
@@ -766,6 +875,36 @@ final class AppState {
             vercelTeams = (try? await VercelAPI.shared.getTeams()) ?? []
         }
         backfillVercelScopeSlugs()
+    }
+
+    /// Projects watched before the repository link was stored share no card with their CircleCI
+    /// builds, so read the link off the projects endpoint once on launch. One request per team,
+    /// and a project Vercel reports no link for keeps its nil slug until Settings sets one.
+    func resolveMissingVercelRepoSlugs() async {
+        let teamIds = preferences.watchedVercelProjects
+            .filter { $0.repoSlug == nil }
+            .map(\.teamId)
+        guard !teamIds.isEmpty else { return }
+
+        var slugByProjectId: [String: String] = [:]
+        for teamId in Set(teamIds) {
+            let projects = (try? await VercelAPI.shared.getProjects(teamId: teamId)) ?? []
+            for project in projects {
+                slugByProjectId[project.id] = project.repoSlug
+            }
+        }
+
+        var didChange = false
+        for index in preferences.watchedVercelProjects.indices
+        where preferences.watchedVercelProjects[index].repoSlug == nil {
+            guard let slug = slugByProjectId[preferences.watchedVercelProjects[index].id] else { continue }
+            preferences.watchedVercelProjects[index].repoSlug = slug
+            didChange = true
+        }
+        if didChange {
+            preferences.save()
+            regroupCards()
+        }
     }
 
     func disconnectVercel() {
@@ -805,6 +944,7 @@ final class AppState {
             let response = try await VercelAPI.shared.validateToken()
             vercelUser = response.user
             await resolveMissingVercelScopeSlugs()
+            await resolveMissingVercelRepoSlugs()
         } catch {
             // Keep the saved token for now; account details can be refreshed later.
             vercelUser = nil

@@ -1,20 +1,33 @@
 import Foundation
 
-/// One branch, the build shown for it, and how long its workflow has been going.
-struct BranchBuild: Identifiable {
+/// One repository, with everything both providers report about it. A card exists for a watched
+/// CircleCI project, for a watched Vercel project, or for the two of them linked by repository.
+struct RepoCard: Identifiable {
+    /// The CircleCI project id (`gh/org/repo`), or `vercel:<projectId>` with no CircleCI side.
+    let id: String
+    let title: String
+    let circleCI: WatchedProject?
+    let vercel: [WatchedVercelProject]
+    let branches: [BranchActivity]
+}
+
+/// One branch, with the build and the deployments shown for it. Either side can be empty: a
+/// branch can have a build and no deployment, or a deployment and no build.
+struct BranchActivity: Identifiable {
     let branch: String
-    let build: Build
-    let span: WorkflowSpan
+    let build: Build?
+    let span: WorkflowSpan?
+    let deployments: [BranchDeployment]
 
     var id: String { branch }
 }
 
-/// A project's branches in display order, newest first.
-struct ProjectBuilds: Identifiable {
-    let project: WatchedProject
-    let branches: [BranchBuild]
+/// The newest deployment of one branch on one Vercel project and target.
+struct BranchDeployment: Identifiable {
+    let project: WatchedVercelProject
+    let deployment: VercelDeployment
 
-    var id: WatchedProject.ID { project.id }
+    var id: String { deployment.uid }
 }
 
 /// When a workflow started and, once every job it has reported is done, when it stopped.

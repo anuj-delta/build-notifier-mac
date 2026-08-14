@@ -134,6 +134,7 @@ final class VercelPoller: ObservableObject {
         }
         
         appState.deploymentsByProject = newDeploymentsByProject
+        appState.regroupCards()
         lastPollTime = Date()
         // Vercel deploys count as build activity, so keep the menu bar spinner
         // running for Vercel-only users (CircleCI's poller isn't running for them).
