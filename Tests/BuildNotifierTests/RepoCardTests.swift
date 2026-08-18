@@ -221,7 +221,7 @@ final class RepoCardTests: XCTestCase {
     }
 
     private func makeWatchedVercelProject(id: String, name: String, repoSlug: String?) -> WatchedVercelProject {
-        WatchedVercelProject(id: id, teamId: nil, projectName: name, teamSlug: "delta", repoSlug: repoSlug)
+        WatchedVercelProject(id: id, teamId: nil, projectName: name, repoSlug: repoSlug)
     }
 
     private func makeBuild(
@@ -284,7 +284,8 @@ final class RepoCardTests: XCTestCase {
                 githubCommitAuthorLogin: "author",
                 githubPrId: nil,
                 gitBranch: nil,
-                gitSha: nil
+                gitSha: nil,
+                branchAlias: nil
             ),
             creator: nil,
             target: target

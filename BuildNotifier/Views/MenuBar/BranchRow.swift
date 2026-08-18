@@ -55,7 +55,7 @@ struct BranchRow: View {
                             )
                         }
 
-                        if !activity.deployments.isEmpty {
+                        if build != nil, !activity.deployments.isEmpty {
                             vercelChips
                         }
 
@@ -325,9 +325,8 @@ struct BranchRow: View {
     }
 
     private var branchPreviewUrl: String? {
-        guard let item = newestDeployment else { return nil }
-        return item.deployment.branchPreviewUrl(scopeSlug: item.project.teamSlug)
-            ?? item.deployment.deploymentUrl
+        guard let deployment = newestDeployment?.deployment else { return nil }
+        return deployment.branchPreviewUrl ?? deployment.deploymentUrl
     }
 
     private func open() {
@@ -390,9 +389,7 @@ private struct VercelChip: View {
     }
 
     private func open() {
-        let url = item.deployment.branchPreviewUrl(scopeSlug: item.project.teamSlug)
-            ?? item.deployment.deploymentUrl
-        AppWindowManager.openFromMenu(url)
+        AppWindowManager.openFromMenu(item.deployment.branchPreviewUrl ?? item.deployment.deploymentUrl)
     }
 }
 

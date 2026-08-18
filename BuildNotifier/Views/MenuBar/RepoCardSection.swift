@@ -61,14 +61,6 @@ struct RepoCardSection: View {
         .animation(Motion.hover, value: isRepoLinkHovered)
     }
 
-    /// Names the provider on a card CircleCI knows nothing about, so a Vercel-only repository
-    /// doesn't read as a repository whose builds went missing.
-    private var vercelOnlyLabel: some View {
-        Text("Vercel")
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(AppChrome.textMuted)
-    }
-
     private func deployButton(_ project: WatchedProject) -> some View {
         Button {
             onDeploy(project)
@@ -110,10 +102,6 @@ struct RepoCardSection: View {
                     } else {
                         repositoryPath(highlighted: false)
                             .layoutPriority(1)
-                    }
-
-                    if card.circleCI == nil {
-                        vercelOnlyLabel
                     }
 
                     Spacer(minLength: 6)
