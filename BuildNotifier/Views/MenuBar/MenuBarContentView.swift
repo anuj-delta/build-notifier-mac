@@ -1,58 +1,12 @@
 import SwiftUI
 
-enum MenuBarTab: String, Hashable {
-    case overview
-    case circleCI
-    case vercel
-
-    var title: String {
-        switch self {
-        case .overview:
-            return "All"
-        case .circleCI:
-            return "CircleCI"
-        case .vercel:
-            return "Vercel"
-        }
-    }
-
-    var markStyle: ProviderMarkStyle {
-        switch self {
-        case .overview:
-            return .overview
-        case .circleCI:
-            return .circleCI
-        case .vercel:
-            return .vercel
-        }
-    }
-}
-
-enum ProviderMarkStyle {
-    case overview
-    case circleCI
-    case vercel
-}
-
 enum MenuPalette {
-    static let backdrop = AppChrome.window
-    static let card = AppChrome.surface
-    static let cardBorder = AppChrome.border
     static let ink = AppChrome.text
     static let mutedInk = AppChrome.textMuted
-    static let accent = AppChrome.accent
-    static let accentSoft = AppChrome.accentSoft
     static let approval = AppChrome.warning
 }
 
-private struct FilteredVercelProject: Identifiable {
-    let project: WatchedVercelProject
-    let deployments: [VercelDeployment]
-
-    var id: WatchedVercelProject.ID { project.id }
-}
-
-/// Project sections with a hairline between them, so one repo's last row never reads as the
+/// Repository cards with a hairline between them, so one repo's last row never reads as the
 /// next repo's first.
 private struct SeparatedSections<Item: Identifiable, Content: View>: View {
     let items: [Item]
@@ -72,27 +26,9 @@ private struct SeparatedSections<Item: Identifiable, Content: View>: View {
 }
 
 private struct MenuBarSnapshot {
-    let availableTabs: [MenuBarTab]
-    let activeTab: MenuBarTab
     let hasSearchQuery: Bool
     let filteredPendingApprovals: [PendingApproval]
-    let filteredGroupedBuilds: [ProjectBuilds]
-    let filteredVercelProjects: [FilteredVercelProject]
-    let circleCICount: Int
-    let vercelCount: Int
-    let circleCISummaryLabel: String
-    let vercelSummaryLabel: String
-
-    func count(for tab: MenuBarTab) -> Int {
-        switch tab {
-        case .overview:
-            return circleCICount + vercelCount
-        case .circleCI:
-            return circleCICount
-        case .vercel:
-            return vercelCount
-        }
-    }
+    let filteredCards: [RepoCard]
 }
 
 private enum PendingMenuAction {
@@ -180,7 +116,6 @@ struct MenuBarContentView: View {
     @Environment(MenuMetrics.self) private var metrics
     @Bindable var appState: AppState
     @State private var isRefreshing = false
-    @State private var selectedTab: MenuBarTab = .overview
     @State private var isSearchExpanded = false
     @State private var searchText = ""
     @State private var pendingAction: PendingMenuAction?
@@ -192,7 +127,7 @@ struct MenuBarContentView: View {
 
         ZStack {
             VStack(spacing: 0) {
-                header(snapshot: snapshot)
+                header
 
                 if let error = appState.error {
                     ErrorBanner(
@@ -207,7 +142,7 @@ struct MenuBarContentView: View {
                 if appState.watchedProjects.isEmpty && appState.watchedVercelProjects.isEmpty {
                     emptyState
                 } else {
-                    buildsList(snapshot: snapshot)
+                    cardList(snapshot: snapshot)
                 }
 
                 footer
@@ -256,15 +191,10 @@ struct MenuBarContentView: View {
         }
         .animation(Motion.state, value: pendingAction != nil)
         .animation(Motion.state, value: deployTarget != nil)
-        .onAppear {
-            selectDefaultTabIfNeeded(tabs: snapshot.availableTabs)
-        }
     }
 
-    private func header(snapshot: MenuBarSnapshot) -> some View {
-        let showsTabs = snapshot.availableTabs.count > 1
-
-        return VStack(alignment: .leading, spacing: 10) {
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 AppBrandIcon(size: 26)
 
@@ -285,30 +215,17 @@ struct MenuBarContentView: View {
             }
 
             if isSearchExpanded {
-                searchField(activeTab: snapshot.activeTab)
+                searchField
                     .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
-            if showsTabs {
-                MenuBarTabPicker(
-                    selectedTab: Binding(
-                        get: { snapshot.activeTab },
-                        set: { selectedTab = $0 }
-                    ),
-                    tabs: snapshot.availableTabs,
-                    countProvider: snapshot.count(for:)
-                )
             }
         }
         .padding(.horizontal, 12)
         .padding(.top, 12)
-        .padding(.bottom, showsTabs ? 0 : 10)
+        .padding(.bottom, 10)
         .overlay(alignment: .bottom) {
-            if !showsTabs {
-                Rectangle()
-                    .fill(AppChrome.separator)
-                    .frame(height: 1)
-            }
+            Rectangle()
+                .fill(AppChrome.separator)
+                .frame(height: 1)
         }
         .animation(Motion.spring, value: isSearchExpanded)
     }
@@ -347,13 +264,13 @@ struct MenuBarContentView: View {
         }
     }
 
-    private func searchField(activeTab: MenuBarTab) -> some View {
+    private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(isSearchFocused ? AppChrome.accent : MenuPalette.mutedInk)
 
-            TextField(searchPlaceholder(for: activeTab), text: $searchText)
+            TextField("Filter branches", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13, weight: .regular))
                 .focused($isSearchFocused)
@@ -447,10 +364,10 @@ struct MenuBarContentView: View {
         .padding(24)
     }
 
-    private func buildsList(snapshot: MenuBarSnapshot) -> some View {
+    private func cardList(snapshot: MenuBarSnapshot) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
-                tabContent(snapshot: snapshot)
+                cards(snapshot: snapshot)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -490,99 +407,38 @@ struct MenuBarContentView: View {
     }
 
     private func makeSnapshot() -> MenuBarSnapshot {
-        let groupedBuilds = appState.groupedBuilds
         let normalizedSearchText = trimmedSearchText
         let hasSearchQuery = !normalizedSearchText.isEmpty
 
-        let hasCircleCIContent = !groupedBuilds.isEmpty || !appState.pendingApprovals.isEmpty || !appState.watchedProjects.isEmpty
-        let hasVercelContent = !appState.watchedVercelProjects.isEmpty
-
-        var tabs: [MenuBarTab] = []
-        if hasCircleCIContent && hasVercelContent {
-            tabs.append(.overview)
-        }
-        if hasCircleCIContent {
-            tabs.append(.circleCI)
-        }
-        if hasVercelContent {
-            tabs.append(.vercel)
+        guard hasSearchQuery else {
+            return MenuBarSnapshot(
+                hasSearchQuery: false,
+                filteredPendingApprovals: appState.pendingApprovals,
+                filteredCards: appState.repoCards
+            )
         }
 
-        let availableTabs = tabs.isEmpty ? [.overview] : tabs
-        let activeTab = availableTabs.contains(selectedTab) ? selectedTab : (availableTabs.first ?? .overview)
-
-        let filteredPendingApprovals: [PendingApproval]
-        if hasSearchQuery {
-            filteredPendingApprovals = appState.pendingApprovals.filter { approval in
-                branchMatchesSearch(approval.build.branch, searchText: normalizedSearchText)
+        let filteredCards: [RepoCard] = appState.repoCards.compactMap { card in
+            let branches = card.branches.filter {
+                branchMatchesSearch($0.branch, searchText: normalizedSearchText)
             }
-        } else {
-            filteredPendingApprovals = appState.pendingApprovals
+            guard !branches.isEmpty else { return nil }
+            return RepoCard(
+                id: card.id,
+                title: card.title,
+                circleCI: card.circleCI,
+                vercel: card.vercel,
+                branches: branches
+            )
         }
-
-        let filteredGroupedBuilds: [ProjectBuilds]
-        if hasSearchQuery {
-            filteredGroupedBuilds = groupedBuilds.compactMap { item in
-                let filtered = item.branches.filter {
-                    branchMatchesSearch($0.branch, searchText: normalizedSearchText) ||
-                    branchMatchesSearch($0.build.branch, searchText: normalizedSearchText)
-                }
-
-                guard !filtered.isEmpty else { return nil }
-                return ProjectBuilds(project: item.project, branches: filtered)
-            }
-        } else {
-            filteredGroupedBuilds = groupedBuilds
-        }
-
-        let filteredVercelProjects = appState.watchedVercelProjects.compactMap { project -> FilteredVercelProject? in
-            let deployments = appState.deploymentsByProject[project.id] ?? []
-            let filteredDeployments = hasSearchQuery
-                ? deployments.filter { branchMatchesSearch($0.meta?.branch, searchText: normalizedSearchText) }
-                : deployments
-
-            guard !hasSearchQuery || !filteredDeployments.isEmpty else { return nil }
-            return FilteredVercelProject(project: project, deployments: filteredDeployments)
-        }
-
-        let circleCISummaryLabel: String
-        if !filteredPendingApprovals.isEmpty {
-            circleCISummaryLabel = "\(appState.watchedProjects.count) projects • \(filteredPendingApprovals.count) approvals"
-        } else {
-            circleCISummaryLabel = "\(appState.watchedProjects.count) projects"
-        }
-
-        let deploymentCount = filteredVercelProjects.reduce(into: 0) { partialResult, project in
-            partialResult += project.deployments.count
-        }
-        let vercelSummaryLabel = deploymentCount > 0
-            ? "\(appState.watchedVercelProjects.count) projects • \(deploymentCount) deployments"
-            : "\(appState.watchedVercelProjects.count) projects"
 
         return MenuBarSnapshot(
-            availableTabs: availableTabs,
-            activeTab: activeTab,
-            hasSearchQuery: hasSearchQuery,
-            filteredPendingApprovals: filteredPendingApprovals,
-            filteredGroupedBuilds: filteredGroupedBuilds,
-            filteredVercelProjects: filteredVercelProjects,
-            circleCICount: appState.watchedProjects.count,
-            vercelCount: appState.watchedVercelProjects.count,
-            circleCISummaryLabel: circleCISummaryLabel,
-            vercelSummaryLabel: vercelSummaryLabel
+            hasSearchQuery: true,
+            filteredPendingApprovals: appState.pendingApprovals.filter { approval in
+                branchMatchesSearch(approval.build.branch, searchText: normalizedSearchText)
+            },
+            filteredCards: filteredCards
         )
-    }
-
-    @ViewBuilder
-    private func tabContent(snapshot: MenuBarSnapshot) -> some View {
-        switch snapshot.activeTab {
-        case .overview:
-            overviewContent(snapshot: snapshot)
-        case .circleCI:
-            circleCIContent(snapshot: snapshot)
-        case .vercel:
-            vercelContent(snapshot: snapshot)
-        }
     }
 
     @ViewBuilder
@@ -605,15 +461,13 @@ struct MenuBarContentView: View {
         )
     }
 
-    private func projectSection(_ item: ProjectBuilds, isFiltered: Bool) -> some View {
-        ProjectSection(
-            project: item.project,
+    private func cardSection(_ card: RepoCard) -> some View {
+        RepoCardSection(
+            card: card,
             currentUser: appState.currentUser,
-            branches: item.branches,
-            deployedBranchesByEnv: appState.deployedBranchesByEnv(forSlug: item.project.slug),
-            deployingBranchesByEnv: appState.deployingBranchesByEnv(forSlug: item.project.slug),
+            deployedBranchesByEnv: card.circleCI.map { appState.deployedBranchesByEnv(forSlug: $0.slug) } ?? [:],
+            deployingBranchesByEnv: card.circleCI.map { appState.deployingBranchesByEnv(forSlug: $0.slug) } ?? [:],
             workflowStatusByWorkflowId: appState.workflowStatusByWorkflowId,
-            isFiltered: isFiltered,
             approvalCapableWorkflowIds: appState.approvalCapableWorkflowIds,
             armedAutoApprovalWorkflowIds: appState.armedAutoApprovalWorkflowIds,
             onRetry: { build in
@@ -623,7 +477,8 @@ struct MenuBarContentView: View {
                 pendingAction = .cancel(build)
             },
             onRedeploy: { build in
-                deployTarget = DeployTarget(project: item.project, branch: build.branch ?? "")
+                guard let project = card.circleCI else { return }
+                deployTarget = DeployTarget(project: project, branch: build.branch ?? "")
             },
             onArmAutoApprove: { build in
                 appState.armAutoApprove(for: build)
@@ -647,41 +502,14 @@ struct MenuBarContentView: View {
     }
 
     @ViewBuilder
-    private func overviewContent(snapshot: MenuBarSnapshot) -> some View {
+    private func cards(snapshot: MenuBarSnapshot) -> some View {
         if !snapshot.filteredPendingApprovals.isEmpty {
             pendingApprovals(snapshot.filteredPendingApprovals)
         }
 
-        if !snapshot.filteredGroupedBuilds.isEmpty {
-            PopoverSectionHeader(
-                title: "CircleCI",
-                subtitle: snapshot.hasSearchQuery ? "Matching builds and approvals" : "Recent builds and approvals"
-            )
-
-            SeparatedSections(items: snapshot.filteredGroupedBuilds) { item in
-                projectSection(item, isFiltered: snapshot.hasSearchQuery)
-            }
-        }
-
-        if !snapshot.filteredVercelProjects.isEmpty {
-            PopoverSectionHeader(
-                title: "Vercel",
-                subtitle: snapshot.hasSearchQuery ? "Matching deployments" : "Watched deployments"
-            )
-
-            SeparatedSections(items: snapshot.filteredVercelProjects) { item in
-                VercelProjectSection(
-                    project: item.project,
-                    deployments: item.deployments,
-                    isFiltered: snapshot.hasSearchQuery
-                )
-            }
-        }
-
-        if snapshot.hasSearchQuery &&
-            snapshot.filteredPendingApprovals.isEmpty &&
-            snapshot.filteredGroupedBuilds.isEmpty &&
-            snapshot.filteredVercelProjects.isEmpty {
+        if !snapshot.filteredCards.isEmpty {
+            SeparatedSections(items: snapshot.filteredCards, section: cardSection)
+        } else if snapshot.hasSearchQuery {
             ProviderEmptyStateCard(
                 title: "No matching results",
                 message: "No branch matches “\(trimmedSearchText)”. Clear the filter to see every build and deployment.",
@@ -690,86 +518,17 @@ struct MenuBarContentView: View {
                 actionTitle: "Clear filter",
                 action: { searchText = "" }
             )
-        }
-    }
-
-    @ViewBuilder
-    private func circleCIContent(snapshot: MenuBarSnapshot) -> some View {
-        if !snapshot.filteredPendingApprovals.isEmpty {
-            pendingApprovals(snapshot.filteredPendingApprovals)
-        }
-
-        if snapshot.filteredGroupedBuilds.isEmpty {
-            if snapshot.hasSearchQuery {
-                ProviderEmptyStateCard(
-                    title: "No matching CircleCI branches",
-                    message: "No tracked branch matches “\(trimmedSearchText)”.",
-                    icon: "magnifyingglass",
-                    tint: AppChrome.textMuted,
-                    actionTitle: "Clear filter",
-                    action: { searchText = "" }
-                )
-            } else if appState.watchedProjects.isEmpty {
-                ProviderEmptyStateCard(
-                    title: "No CircleCI projects watched",
-                    message: "Pick the repositories to watch, and their branches show up here.",
-                    icon: "checkmark.circle",
-                    actionTitle: "Open Settings",
-                    action: openSettings
-                )
-            } else {
-                ProviderEmptyStateCard(
-                    title: "Waiting for the first build",
-                    message: "The watched repositories have no recent builds. Branches show up after the next poll.",
-                    icon: "clock.arrow.circlepath"
-                )
-            }
-        } else {
-            ForEach(snapshot.filteredGroupedBuilds, id: \.project.id) { item in
-                projectSection(item, isFiltered: snapshot.hasSearchQuery)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func vercelContent(snapshot: MenuBarSnapshot) -> some View {
-        if appState.watchedVercelProjects.isEmpty {
+        } else if snapshot.filteredPendingApprovals.isEmpty {
             ProviderEmptyStateCard(
-                title: "No Vercel projects watched",
-                message: "Pick the projects to watch, and their deployments show up here.",
-                icon: "triangle",
-                tint: AppChrome.deploy,
-                actionTitle: "Open Settings",
-                action: openSettings
+                title: "Waiting for the first build",
+                message: "The watched projects have no recent activity. Branches show up after the next poll.",
+                icon: "clock.arrow.circlepath"
             )
-        } else if snapshot.filteredVercelProjects.isEmpty {
-            ProviderEmptyStateCard(
-                title: "No matching Vercel branches",
-                message: "No recent deployment matches “\(trimmedSearchText)”.",
-                icon: "magnifyingglass",
-                tint: AppChrome.textMuted,
-                actionTitle: "Clear filter",
-                action: { searchText = "" }
-            )
-        } else {
-            SeparatedSections(items: snapshot.filteredVercelProjects) { item in
-                VercelProjectSection(
-                    project: item.project,
-                    deployments: item.deployments,
-                    isFiltered: snapshot.hasSearchQuery
-                )
-            }
         }
     }
 
     private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func selectDefaultTabIfNeeded(tabs: [MenuBarTab]) {
-        if !tabs.contains(selectedTab) {
-            selectedTab = tabs.first ?? .overview
-        }
     }
 
     private func toggleSearch() {
@@ -808,17 +567,6 @@ struct MenuBarContentView: View {
         }
     }
 
-    private func searchPlaceholder(for activeTab: MenuBarTab) -> String {
-        switch activeTab {
-        case .overview:
-            return "Filter all branches"
-        case .circleCI:
-            return "Filter CircleCI branches"
-        case .vercel:
-            return "Filter Vercel branches"
-        }
-    }
-
     private func branchMatchesSearch(_ branch: String?, searchText: String) -> Bool {
         guard !searchText.isEmpty else { return true }
         return (branch ?? "").localizedCaseInsensitiveContains(searchText)
@@ -844,17 +592,6 @@ struct MenuBarContentView: View {
             Task { await appState.retryBuild(build) }
         case .cancel(let build):
             Task { await appState.cancelBuild(build) }
-        }
-    }
-
-    private func cancelTitle(for action: PendingMenuAction) -> String {
-        switch action {
-        case .approve:
-            return "Not Now"
-        case .retry:
-            return "Keep Current Build"
-        case .cancel:
-            return "Keep Running"
         }
     }
 }
@@ -974,153 +711,6 @@ private struct HeaderIconButton: View {
         .pointingHandCursor()
         .help(help)
         .accessibilityLabel(accessibilityLabel)
-    }
-}
-
-struct MenuBarTabPicker: View {
-    @Binding var selectedTab: MenuBarTab
-    let tabs: [MenuBarTab]
-    let countProvider: (MenuBarTab) -> Int
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(tabs, id: \.self) { tab in
-                let isSelected = selectedTab == tab
-
-                Button {
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        selectedTab = tab
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(tab.title)
-                            .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                            .foregroundStyle(isSelected ? AppChrome.text : AppChrome.textMuted)
-                            .lineLimit(1)
-
-                        Text("\(countProvider(tab))")
-                            .font(.system(size: 11, weight: .medium))
-                            .monospacedDigit()
-                            .foregroundStyle(isSelected ? AppChrome.accent : AppChrome.textMuted)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(
-                                Capsule().fill(isSelected ? AppChrome.accentSoft : AppChrome.surfaceMuted)
-                            )
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.top, 4)
-                    .padding(.bottom, 9)
-                    .overlay(alignment: .bottom) {
-                        Rectangle()
-                            .fill(isSelected ? AppChrome.accent : Color.clear)
-                            .frame(height: 2)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-            }
-
-            Spacer(minLength: 0)
-        }
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppChrome.separator)
-                .frame(height: 1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-struct ProviderSummaryCard: View {
-    let markStyle: ProviderMarkStyle
-    let title: String
-    let subtitle: String
-    let pillText: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ProviderMark(style: markStyle, color: Color.accentColor, size: 14)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(MenuPalette.ink)
-                Text(subtitle)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(MenuPalette.mutedInk)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 12)
-
-            Text(pillText)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(MenuPalette.mutedInk)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(AppChrome.surfaceMuted)
-                .clipShape(RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: AppChrome.radiusSmall, style: .continuous)
-                        .stroke(AppChrome.border, lineWidth: 1)
-                }
-        }
-        .padding(.bottom, 6)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppChrome.separator)
-                .frame(height: 1)
-        }
-    }
-}
-
-struct PopoverSectionHeader: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(Typography.sectionHeader)
-                    .foregroundStyle(MenuPalette.ink)
-                Text(subtitle)
-                    .font(Typography.sectionSubtitle)
-                    .foregroundStyle(MenuPalette.mutedInk)
-            }
-            Spacer()
-        }
-        .padding(.vertical, 2)
-    }
-}
-
-struct ProviderMark: View {
-    let style: ProviderMarkStyle
-    let color: Color
-    let size: CGFloat
-
-    var body: some View {
-        Group {
-            switch style {
-            case .overview:
-                Image(systemName: "square.grid.2x2.fill")
-                    .font(.system(size: size, weight: .semibold))
-                    .foregroundStyle(color)
-            case .circleCI:
-                Text("C")
-                    .font(.system(size: size, weight: .bold, design: .rounded))
-                    .foregroundStyle(color)
-            case .vercel:
-                Image(systemName: "triangle.fill")
-                    .font(.system(size: size, weight: .semibold))
-                    .foregroundStyle(color)
-            }
-        }
-        .frame(width: size + 2, height: size + 2)
     }
 }
 

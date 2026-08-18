@@ -2,61 +2,56 @@ import XCTest
 @testable import BuildNotifier
 
 final class VercelBranchPreviewUrlTests: XCTestCase {
-    func testBranchPreviewUrlUsesProjectBranchAndScope() {
-        let deployment = makeDeployment(branch: "chore/india-ci")
+    func testBranchPreviewUrlUsesTheAliasVercelReports() {
+        let deployment = makeDeployment(
+            branchAlias: "web-app-india-preview-git-chore-india-ci-delta-exchange.vercel.app"
+        )
 
         XCTAssertEqual(
-            deployment.branchPreviewUrl(scopeSlug: "delta"),
-            "https://web-app-india-preview-git-chore-india-ci-delta.vercel.app"
+            deployment.branchPreviewUrl,
+            "https://web-app-india-preview-git-chore-india-ci-delta-exchange.vercel.app"
         )
     }
 
-    func testBranchPreviewUrlSlugifiesBranchAndScope() {
-        let deployment = makeDeployment(branch: "Feature/ENV_Fix (2)")
+    /// Vercel truncates a long branch host and appends its own hash, so the alias is the only
+    /// source for it.
+    func testBranchPreviewUrlKeepsTheTruncatedAlias() {
+        let deployment = makeDeployment(
+            branchAlias: "landing-india-previews-git-fix-dea-703-co-58dbc9-delta-exchange.vercel.app"
+        )
 
         XCTAssertEqual(
-            deployment.branchPreviewUrl(scopeSlug: "Delta Exchange"),
-            "https://web-app-india-preview-git-feature-env-fix-2-delta-exchange.vercel.app"
+            deployment.branchPreviewUrl,
+            "https://landing-india-previews-git-fix-dea-703-co-58dbc9-delta-exchange.vercel.app"
         )
     }
 
     func testBranchPreviewUrlIsNilForProductionDeployment() {
-        let deployment = makeDeployment(branch: "master", target: "production")
+        let deployment = makeDeployment(
+            branchAlias: "web-app-india-preview-git-master-delta-exchange.vercel.app",
+            target: "production"
+        )
 
-        XCTAssertNil(deployment.branchPreviewUrl(scopeSlug: "delta"))
+        XCTAssertNil(deployment.branchPreviewUrl)
     }
 
-    func testBranchPreviewUrlIsNilWithoutScopeOrBranch() {
-        XCTAssertNil(makeDeployment(branch: "main").branchPreviewUrl(scopeSlug: nil))
-        XCTAssertNil(makeDeployment(branch: "main").branchPreviewUrl(scopeSlug: "  "))
-        XCTAssertNil(makeDeployment(branch: nil).branchPreviewUrl(scopeSlug: "delta"))
+    func testBranchPreviewUrlIsNilWithoutAnAlias() {
+        XCTAssertNil(makeDeployment(branchAlias: nil).branchPreviewUrl)
+        XCTAssertNil(makeDeployment(branchAlias: "").branchPreviewUrl)
     }
 
-    /// Vercel truncates and hashes hosts longer than this, so a derived URL would 404.
-    func testBranchPreviewUrlIsNilWhenHostExceedsSixtyThreeCharacters() {
-        // "web-app-india-preview" + "-git-" + branch + "-" + "delta" = 32 + branch length.
-        let deployment = makeDeployment(branch: String(repeating: "a", count: 32))
+    func testDeploymentDecodesTheBranchAliasFromMeta() throws {
+        let json = """
+        {"uid":"dpl_1","name":"web","createdAt":1700000000000,
+         "meta":{"branchAlias":"web-git-main-delta.vercel.app"}}
+        """
 
-        XCTAssertNil(deployment.branchPreviewUrl(scopeSlug: "delta"))
-        XCTAssertNotNil(makeDeployment(branch: String(repeating: "a", count: 31)).branchPreviewUrl(scopeSlug: "delta"))
+        let deployment = try JSONDecoder().decode(VercelDeployment.self, from: Data(json.utf8))
+
+        XCTAssertEqual(deployment.branchPreviewUrl, "https://web-git-main-delta.vercel.app")
     }
 
-    func testUrlSlugTrimsSeparators() {
-        XCTAssertEqual(VercelDeployment.urlSlug("--chore/env--"), "chore-env")
-        XCTAssertEqual(VercelDeployment.urlSlug("release/v1.9.0"), "release-v1-9-0")
-        XCTAssertNil(VercelDeployment.urlSlug("///"))
-    }
-
-    func testWatchedProjectDecodesWithoutStoredTeamSlug() throws {
-        let json = #"{"id":"prj_1","teamId":"team_1","projectName":"web"}"#
-
-        let project = try JSONDecoder().decode(WatchedVercelProject.self, from: Data(json.utf8))
-
-        XCTAssertNil(project.teamSlug)
-        XCTAssertEqual(project.projectName, "web")
-    }
-
-    private func makeDeployment(branch: String?, target: String? = "preview") -> VercelDeployment {
+    private func makeDeployment(branchAlias: String?, target: String? = "preview") -> VercelDeployment {
         VercelDeployment(
             uid: "dpl_1",
             name: "web-app-india-preview",
@@ -67,14 +62,15 @@ final class VercelBranchPreviewUrlTests: XCTestCase {
             buildingAt: nil,
             ready: nil,
             meta: VercelDeploymentMeta(
-                githubCommitRef: branch,
+                githubCommitRef: "chore/india-ci",
                 githubCommitSha: "4f1c9abcdef",
                 githubCommitMessage: "chore(env): point india ci preview at sigma",
                 githubCommitAuthorName: "Anuj Sharma",
                 githubCommitAuthorLogin: "anuj-delta",
                 githubPrId: "10678",
                 gitBranch: nil,
-                gitSha: nil
+                gitSha: nil,
+                branchAlias: branchAlias
             ),
             creator: nil,
             target: target
