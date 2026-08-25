@@ -401,6 +401,13 @@ struct MenuBarContentView: View {
         }
     }
 
+    /// A provider with watched projects that has not reported a poll yet has no data, and no
+    /// data is not the same as no activity.
+    private var isAwaitingFirstPoll: Bool {
+        (!appState.watchedProjects.isEmpty && appState.poller.lastPollTime == nil)
+            || (!appState.watchedVercelProjects.isEmpty && appState.vercelPoller.lastPollTime == nil)
+    }
+
     private var latestPollTime: Date? {
         let times = [appState.poller.lastPollTime, appState.vercelPoller.lastPollTime].compactMap { $0 }
         return times.max()
@@ -520,8 +527,10 @@ struct MenuBarContentView: View {
             )
         } else if snapshot.filteredPendingApprovals.isEmpty {
             ProviderEmptyStateCard(
-                title: "Waiting for the first build",
-                message: "The watched projects have no recent activity. Branches show up after the next poll.",
+                title: isAwaitingFirstPoll ? "Loading builds" : "Waiting for the first build",
+                message: isAwaitingFirstPoll
+                    ? "Fetching the latest builds and deployments."
+                    : "The watched projects have no recent activity. Branches show up after the next poll.",
                 icon: "clock.arrow.circlepath"
             )
         }

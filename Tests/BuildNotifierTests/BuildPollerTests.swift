@@ -52,6 +52,40 @@ final class BuildPollerTests: XCTestCase {
         XCTAssertEqual(successNotifications.map(\.buildNum), [531])
     }
 
+    func testFailedFetchKeepsLastKnownBuilds() async {
+        enum TestError: Error { case unavailable }
+
+        var shouldFailBuildFetch = false
+        let builds = [
+            makeBuild(
+                buildNum: 530,
+                branch: "main",
+                committerName: "Test Author",
+                committerEmail: "author@example.test",
+                workflowId: "wf-existing"
+            )
+        ]
+        let poller = BuildPoller(
+            fetchBuilds: { _, _, _, _ in
+                if shouldFailBuildFetch { throw TestError.unavailable }
+                return builds
+            },
+            fetchWorkflowJobs: { _ in [Self.successJob] },
+            now: { Self.justAfterFixtures }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+
+        await poller.checkNow()
+        shouldFailBuildFetch = true
+        await poller.checkNow()
+
+        XCTAssertEqual(
+            appState.buildsByProject["delta-exchange/api-console"]?.map(\.buildNum),
+            [530]
+        )
+        XCTAssertFalse(appState.repoCards.isEmpty)
+    }
+
     func testFailedBaselineLookupDoesNotReplayExistingSuccessAfterRecovery() async {
         enum TestError: Error { case unavailable }
 

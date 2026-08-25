@@ -157,10 +157,7 @@ final class BuildPoller: ObservableObject {
         guard let appState = appState else { return }
         
         let watchedProjects = appState.preferences.watchedProjects.filter { $0.isEnabled }
-        guard !watchedProjects.isEmpty else {
-            lastPollTime = Date()
-            return
-        }
+        guard !watchedProjects.isEmpty else { return }
         
         error = nil
 
@@ -290,6 +287,14 @@ final class BuildPoller: ObservableObject {
             }
         }
         
+        // A failed fetch must not read as "no builds", so keep the last known builds for
+        // any project this poll could not reach.
+        for project in watchedProjects where newBuildsByProject[project.slug] == nil {
+            if let stale = previousBuilds[project.slug] {
+                newBuildsByProject[project.slug] = stale
+            }
+        }
+
         // Update state
         appState.buildsByProject = newBuildsByProject
         appState.pendingApprovals = newPendingApprovals
