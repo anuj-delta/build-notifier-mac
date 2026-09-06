@@ -93,10 +93,7 @@ final class VercelPoller: ObservableObject {
         guard let appState = appState else { return }
         
         let watchedProjects = appState.preferences.watchedVercelProjects.filter { $0.isEnabled }
-        guard !watchedProjects.isEmpty else {
-            lastPollTime = Date()
-            return
-        }
+        guard !watchedProjects.isEmpty else { return }
         
         error = nil
         
@@ -133,7 +130,14 @@ final class VercelPoller: ObservableObject {
             }
         }
         
+        for project in watchedProjects where newDeploymentsByProject[project.id] == nil {
+            if let stale = previousDeployments[project.id] {
+                newDeploymentsByProject[project.id] = stale
+            }
+        }
+
         appState.deploymentsByProject = newDeploymentsByProject
+        appState.regroupCards()
         lastPollTime = Date()
         // Vercel deploys count as build activity, so keep the menu bar spinner
         // running for Vercel-only users (CircleCI's poller isn't running for them).

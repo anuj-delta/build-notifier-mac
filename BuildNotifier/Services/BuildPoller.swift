@@ -157,10 +157,7 @@ final class BuildPoller: ObservableObject {
         guard let appState = appState else { return }
         
         let watchedProjects = appState.preferences.watchedProjects.filter { $0.isEnabled }
-        guard !watchedProjects.isEmpty else {
-            lastPollTime = Date()
-            return
-        }
+        guard !watchedProjects.isEmpty else { return }
         
         error = nil
 
@@ -290,6 +287,14 @@ final class BuildPoller: ObservableObject {
             }
         }
         
+        // A failed fetch must not read as "no builds", so keep the last known builds for
+        // any project this poll could not reach.
+        for project in watchedProjects where newBuildsByProject[project.slug] == nil {
+            if let stale = previousBuilds[project.slug] {
+                newBuildsByProject[project.slug] = stale
+            }
+        }
+
         // Update state
         appState.buildsByProject = newBuildsByProject
         appState.pendingApprovals = newPendingApprovals
@@ -322,15 +327,15 @@ final class BuildPoller: ObservableObject {
             appState.deployingBranchBySlugByEnv[env] = bySlug.isEmpty ? nil : bySlug
         }
         appState.refreshDeploySpinner()
-        appState.regroupBuilds()
+        appState.regroupCards()
 
         // Resolve the authoritative v2 status for each on-screen row's workflow. v1.1 build
         // status lags v2, so a finished workflow can still report a running job for a short
         // window; the row trusts v2 when available and falls back to v1.1 otherwise.
         let representativeWorkflowIds = Set(
-            appState.groupedBuilds
+            appState.repoCards
                 .flatMap(\.branches)
-                .compactMap { $0.build.workflows?.workflowId }
+                .compactMap { $0.build?.workflows?.workflowId }
         )
         let resolvedStatuses = await resolveWorkflowStatuses(workflowIds: representativeWorkflowIds)
         // Keep the last-known status for an on-screen workflow whose v2 fetch failed this

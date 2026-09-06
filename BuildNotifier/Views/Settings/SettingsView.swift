@@ -681,6 +681,7 @@ struct SettingsView: View {
                             WatchedVercelProjectRow(
                                 project: project,
                                 repositoryURL: vercelProjectURL(project),
+                                repositories: appState.preferences.watchedProjects,
                                 onUpdate: { updated in
                                     appState.updateWatchedVercelProject(updated)
                                 },
@@ -1435,6 +1436,7 @@ struct WatchedProjectRow: View {
 struct WatchedVercelProjectRow: View {
     let project: WatchedVercelProject
     var repositoryURL: URL? = nil
+    var repositories: [WatchedProject] = []
     let onUpdate: (WatchedVercelProject) -> Void
     let onRemove: () -> Void
 
@@ -1456,6 +1458,13 @@ struct WatchedVercelProjectRow: View {
                 openTitle: "Open on Vercel",
                 name: Text(project.projectName).foregroundStyle(AppChrome.text)
             )
+            .opacity(project.isEnabled ? 1 : 0.45)
+
+            RepositoryLinkMenu(slug: project.repoSlug, repositories: repositories) { slug in
+                var updated = project
+                updated.repoSlug = slug
+                onUpdate(updated)
+            }
             .opacity(project.isEnabled ? 1 : 0.45)
 
             FollowModeSegmentedControl(mode: Binding(
@@ -1547,6 +1556,37 @@ private struct RowActionsMenu: View {
 
 /// Compact two-segment mode switch for a watched-project row. Distinct in shape from the
 /// row's on/off switch so "watching" and "which builds" read as separate controls.
+/// The repository a Vercel project deploys, which decides the card its deployments land on.
+/// Detected from the project's git link; a picker rather than a text field, so a typo cannot
+/// silently unlink a project.
+private struct RepositoryLinkMenu: View {
+    let slug: String?
+    let repositories: [WatchedProject]
+    let onSelect: (String?) -> Void
+
+    var body: some View {
+        Menu {
+            Button("Not linked") { onSelect(nil) }
+
+            if !repositories.isEmpty {
+                Divider()
+                ForEach(repositories) { repository in
+                    Button(repository.slug) { onSelect(repository.slug.lowercased()) }
+                }
+            }
+        } label: {
+            Text(slug ?? "Not linked")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(slug == nil ? AppChrome.textMuted : AppChrome.text)
+                .lineLimit(1)
+                .truncationMode(.head)
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 150)
+        .help("The repository these deployments belong to")
+    }
+}
+
 private struct FollowModeSegmentedControl: View {
     @Binding var mode: FollowMode
 

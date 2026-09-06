@@ -47,6 +47,9 @@ struct VercelDeploymentMeta: Codable, Equatable {
     let githubPrId: String?
     let gitBranch: String?
     let gitSha: String?
+    /// The host Vercel aliases to the newest deployment on this branch. Vercel truncates and hashes
+    /// it past 63 characters, so it cannot be derived from the project, branch and scope names.
+    let branchAlias: String?
     
     var branch: String? {
         githubCommitRef ?? gitBranch
@@ -168,35 +171,13 @@ extension VercelDeployment {
         "https://vercel.com/deployments/\(uid)"
     }
 
-    /// Vercel's generated branch URL - `<project>-git-<branch>-<scope>.vercel.app` - which always serves the
-    /// newest deployment on that branch, unlike `deploymentUrl` which is pinned to a single commit. Built
-    /// locally rather than read from the alias API, because Vercel only assigns the branch alias to the
-    /// newest deployment, so older rows would come back without it.
-    func branchPreviewUrl(scopeSlug: String?) -> String? {
-        guard !isProduction else { return nil }
-        guard let scope = Self.urlSlug(scopeSlug ?? ""),
-              let branch = Self.urlSlug(meta?.branch ?? ""),
-              let project = Self.urlSlug(name) else { return nil }
-
-        let host = "\(project)-git-\(branch)-\(scope)"
-        // Past 63 characters Vercel truncates and appends its own hash, so the derived host stops matching.
-        guard host.count <= 63 else { return nil }
-        return "https://\(host).vercel.app"
+    /// The branch URL, which always serves the newest deployment on that branch, unlike
+    /// `deploymentUrl` which is pinned to one commit.
+    var branchPreviewUrl: String? {
+        guard !isProduction, let alias = meta?.branchAlias, !alias.isEmpty else { return nil }
+        return "https://\(alias)"
     }
 
-    static func urlSlug(_ value: String) -> String? {
-        var slug = ""
-        for character in value.lowercased() {
-            if character.isASCII && (character.isLetter || character.isNumber) {
-                slug.append(character)
-            } else if !slug.isEmpty, slug.last != "-" {
-                slug.append("-")
-            }
-        }
-        while slug.hasSuffix("-") { slug.removeLast() }
-        return slug.isEmpty ? nil : slug
-    }
-    
     /// Human-readable commit author for notifications. Prefers the GitHub login (username).
     var authorDisplayName: String? {
         for candidate in [meta?.authorLogin, meta?.authorName] {
