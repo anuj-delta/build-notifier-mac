@@ -7,27 +7,56 @@ import AppKit
 enum MenuBarGlyph {
     @MainActor
     static func image(for appState: AppState) -> NSImage {
-        if !appState.pendingApprovals.isEmpty {
+        image(status: appState.overallStatus, appState: appState)
+    }
+
+    @MainActor
+    static func image(status: OverallStatus, appState: AppState) -> NSImage {
+        switch status {
+        case .running:
+            return deploying(style: appState.preferences.deployLoaderStyle, phase: appState.deploySpinnerPhase)
+        case .failing:
+            return coloredSymbol(status.menuBarIcon, color: .systemRed)
+        case .pendingApproval:
             return approval
+        case .passing:
+            return symbol(status.menuBarIcon)
+        case .unknown:
+            return symbol(status.menuBarIcon)
         }
-        guard appState.hasActiveBuildActivity else {
-            return symbol("circle.dashed")
+    }
+
+    @MainActor
+    static func title(for appState: AppState) -> String? {
+        title(status: appState.overallStatus, counts: appState.statusCounts, pendingApprovals: appState.pendingApprovals.count)
+    }
+
+    static func title(status: OverallStatus, counts: StatusCounts, pendingApprovals: Int) -> String? {
+        switch status {
+        case .failing: return "\(counts.failing) failing"
+        case .pendingApproval: return "\(pendingApprovals) waiting"
+        case .running: return "building"
+        case .passing, .unknown: return nil
         }
-        guard appState.preferences.showDeployLoader else {
-            return symbol("arrow.triangle.2.circlepath")
-        }
-        return deploying(style: appState.preferences.deployLoaderStyle, phase: appState.deploySpinnerPhase)
     }
 
     @MainActor
     static func accessibilityLabel(for appState: AppState) -> String {
-        if !appState.pendingApprovals.isEmpty {
-            return "Approval pending"
+        accessibilityLabel(
+            status: appState.overallStatus,
+            counts: appState.statusCounts,
+            pendingApprovals: appState.pendingApprovals.count
+        )
+    }
+
+    static func accessibilityLabel(status: OverallStatus, counts: StatusCounts, pendingApprovals: Int) -> String {
+        switch status {
+        case .passing: return "All builds passing"
+        case .failing: return "\(counts.failing) failing"
+        case .running: return "Builds running"
+        case .pendingApproval: return "\(pendingApprovals) approval(s) waiting"
+        case .unknown: return "No build data"
         }
-        if appState.isDeploying {
-            return "Deploying"
-        }
-        return appState.hasActiveBuildActivity ? "Builds running" : "Idle"
     }
 
     // MARK: - Frames
@@ -49,6 +78,15 @@ enum MenuBarGlyph {
         guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return NSImage() }
         image.isTemplate = true
+        return image
+    }
+
+    private static func coloredSymbol(_ name: String, color: NSColor) -> NSImage {
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(hierarchicalColor: color))
+        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) else { return NSImage() }
+        image.isTemplate = false
         return image
     }
 

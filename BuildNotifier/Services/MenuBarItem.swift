@@ -59,17 +59,16 @@ final class MenuBarItem: NSObject {
     private var reasserted = false
     private var panelTop: CGFloat = 0
 
-    private let itemWidth: CGFloat = 24
     private let gap: CGFloat = 6
     private let screenInset: CGFloat = 8
 
     init(appState: AppState) {
         self.appState = appState
-        item = NSStatusBar.system.statusItem(withLength: 24)
+        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         panel = MenuPanel(content: MenuBarRoot(appState: appState).environment(metrics))
         super.init()
 
-        item.length = itemWidth
+        item.length = NSStatusItem.variableLength
         item.behavior = []
         item.autosaveName = "Item-0"
         item.isVisible = true
@@ -90,8 +89,15 @@ final class MenuBarItem: NSObject {
     /// is one-shot, so it re-arms itself after each change.
     private func renderGlyph() {
         withObservationTracking {
-            item.button?.image = MenuBarGlyph.image(for: appState)
-            item.button?.setAccessibilityLabel(MenuBarGlyph.accessibilityLabel(for: appState))
+            let counts = appState.menuBarCounts
+            let status = appState.menuBarStatus
+            let title = MenuBarGlyph.title(status: status, counts: counts, pendingApprovals: appState.pendingApprovals.count) ?? ""
+            item.button?.image = MenuBarGlyph.image(status: status, appState: appState)
+            item.button?.title = title
+            item.button?.imagePosition = title.isEmpty ? .imageOnly : .imageLeft
+            item.button?.setAccessibilityLabel(
+                MenuBarGlyph.accessibilityLabel(status: status, counts: counts, pendingApprovals: appState.pendingApprovals.count)
+            )
         } onChange: { [weak self] in
             Task { @MainActor in self?.renderGlyph() }
         }

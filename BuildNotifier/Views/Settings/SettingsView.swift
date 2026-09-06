@@ -207,23 +207,10 @@ struct SettingsView: View {
 
             SettingsSection(
                 title: "Menu Bar",
-                subtitle: "The spinning icon shown while a branch is deploying.",
+                subtitle: "The animated icon shown while a build or deploy is in flight.",
                 systemImage: "menubar.rectangle"
             ) {
-                SettingsToggleRow(
-                    title: "Show deploy loader",
-                    isOn: Binding(
-                        get: { appState.preferences.showDeployLoader },
-                        set: {
-                            appState.preferences.showDeployLoader = $0
-                            appState.savePreferences()
-                        }
-                    )
-                )
-
-                Divider()
-
-                SettingsPickerRow(title: "Loader style") {
+                SettingsPickerRow(title: "Spinner style") {
                     HStack(alignment: .center, spacing: 10) {
                         DeployLoaderPreview(style: appState.preferences.deployLoaderStyle)
 
@@ -243,7 +230,6 @@ struct SettingsView: View {
                         .frame(width: 150, alignment: .trailing)
                     }
                 }
-                .disabled(!appState.preferences.showDeployLoader)
             }
         }
     }

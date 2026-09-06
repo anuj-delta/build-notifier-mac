@@ -10,6 +10,34 @@ enum AppScreen {
     case main
 }
 
+/// Aggregate build/deployment tallies across all watched projects.
+struct StatusCounts {
+    var running = 0
+    var failing = 0
+    var passing = 0
+
+    /// Bucket one build/deploy by its terminal-ish state. Failure/running/success
+    /// are mutually exclusive per unit, so at most one bucket increments.
+    mutating func tally(isFailure: Bool, isRunning: Bool, isSuccess: Bool) {
+        if isFailure { failing += 1 }
+        else if isRunning { running += 1 }
+        else if isSuccess { passing += 1 }
+    }
+
+    /// Priority order for the menu bar: pending approval > running > failing >
+    /// passing > unknown. Running outranks failing so an active build shows the
+    /// animated "building" icon rather than being masked by a stale failure.
+    /// Callers pass the pending-approval count separately since it isn't part of
+    /// the build/deploy tally.
+    func overallStatus(pendingApprovals: Int) -> OverallStatus {
+        if pendingApprovals > 0 { return .pendingApproval }
+        if running > 0 { return .running }
+        if failing > 0 { return .failing }
+        if passing > 0 { return .passing }
+        return .unknown
+    }
+}
+
 @MainActor
 @Observable
 final class AppState {
@@ -105,65 +133,76 @@ final class AppState {
         hasCircleCIToken || hasVercelToken
     }
     
-    var overallStatus: OverallStatus {
-        // Check for pending approvals first
-        if !pendingApprovals.isEmpty {
-            return .pendingApproval
-        }
-        
-        // Check builds - look at the LATEST build per branch per project
-        var hasRunning = false
-        var hasFailure = false
-        var hasSuccess = false
-        
-        // CircleCI builds
+    /// Single pass over watched builds/deployments producing the counts the menu
+    /// bar needs. Uses the latest build per branch per project (and the latest
+    /// deployment per project) as the counted unit — the same unit overallStatus
+    /// reasons about. A build's status is one value, so the buckets are mutually
+    /// exclusive per unit.
+    var statusCounts: StatusCounts {
+        var counts = StatusCounts()
+        let keys = keyBranches
+        let now = Date()
+
         for (_, builds) in buildsByProject {
+            // Latest build per branch (build numbers are monotonic within a branch).
             var branchLatest: [String: Build] = [:]
             for build in builds {
                 let branch = build.branch ?? "unknown"
-                if branchLatest[branch] == nil || build.buildNum > (branchLatest[branch]?.buildNum ?? 0) {
+                if branchLatest[branch].map({ build.buildNum > $0.buildNum }) ?? true {
                     branchLatest[branch] = build
                 }
             }
-            
-            for (_, build) in branchLatest {
+
+            // Parse each branch's activity date once - it's reused by both the
+            // recency-ranked sort and the staleness check below, and parsing isn't
+            // free on the per-redraw hot path.
+            let dateByBranch = branchLatest.compactMapValues { $0.activityDate }
+
+            // Visible set: the most-recently-active branches, same as the popover.
+            let visible = Set(
+                branchLatest.keys
+                    .sorted { (dateByBranch[$0] ?? .distantPast) > (dateByBranch[$1] ?? .distantPast) }
+                    .prefix(Self.maxBranchesPerProject)
+            )
+
+            for (branch, build) in branchLatest {
+                // A key branch (main/develop/production) always counts. Any other
+                // branch counts only while it's both visible and not stale, so
+                // abandoned feature branches stop pinning the badge to "failing".
+                if !keys.contains(branch) {
+                    guard visible.contains(branch) else { continue }
+                    if let date = dateByBranch[branch],
+                       now.timeIntervalSince(date) > Self.statusRecencyWindow { continue }
+                }
                 let status = build.buildStatus
-                if status.isRunning { hasRunning = true }
-                if status.isFailure { hasFailure = true }
-                if status.isSuccess { hasSuccess = true }
+                counts.tally(isFailure: status.isFailure, isRunning: status.isRunning, isSuccess: status.isSuccess)
             }
         }
-        
-        // Vercel deployments
+
         for (_, deployments) in deploymentsByProject {
-            if let latest = deployments.first {
-                let status = latest.deploymentStatus
-                if status.isRunning { hasRunning = true }
-                if status.isFailure { hasFailure = true }
-                if status.isSuccess { hasSuccess = true }
-            }
+            guard let deploy = deployments.first else { continue }
+            // Production deploys always count; previews only while recent.
+            if !deploy.isProduction,
+               now.timeIntervalSince(deploy.createdDate) > Self.statusRecencyWindow { continue }
+            let status = deploy.deploymentStatus
+            counts.tally(isFailure: status.isFailure, isRunning: status.isRunning, isSuccess: status.isSuccess)
         }
-        
-        if hasFailure { return .failing }
-        if hasRunning { return .running }
-        if hasSuccess { return .passing }
-        return .unknown
+
+        return counts
     }
 
-    var hasActiveBuildActivity: Bool {
-        for (_, builds) in buildsByProject {
-            if builds.contains(where: { $0.buildStatus.isRunning }) {
-                return true
-            }
-        }
+    /// Non-key branches older than this stop counting toward the menu bar status,
+    /// so an abandoned branch whose last build failed doesn't pin the badge.
+    private static let statusRecencyWindow: TimeInterval = 7 * 24 * 60 * 60
 
-        for (_, deployments) in deploymentsByProject {
-            if deployments.contains(where: { $0.deploymentStatus.isRunning }) {
-                return true
-            }
-        }
+    /// Branches that always count toward the menu bar status, even when stale or
+    /// crowded out of the visible list - the ones you always want to know about.
+    private var keyBranches: Set<String> {
+        Set(preferences.productionBranches + ["develop"])
+    }
 
-        return false
+    var overallStatus: OverallStatus {
+        statusCounts.overallStatus(pendingApprovals: pendingApprovals.count)
     }
 
     /// A deploy to any tracked environment is in flight (its workflow is still
@@ -179,28 +218,40 @@ final class AppState {
     /// reads it, which is the same path that swaps the idle/spinner/approval icon.
     var deploySpinnerPhase: Double = 0
     private var deploySpinnerTimer: Timer?
-    private let deploySpinnerFPS: Double = 20
+    private var deploySpinnerStart: TimeInterval = 0
+    private let deploySpinnerFPS: Double = 60
     private let deploySpinnerPeriod: Double = 0.9
 
-    /// Whether the animated loader should be spinning: any build/deploy is active
-    /// and the user hasn't turned the loader off.
-    private var wantsSpinnerAnimation: Bool {
-        preferences.showDeployLoader && hasActiveBuildActivity
-    }
+    /// Menu-bar status snapshot, recomputed once per poll in `refreshDeploySpinner`
+    /// rather than by the label. `overallStatus`/`statusCounts` parse ISO8601 build
+    /// timestamps (~1.5ms per pass), so recomputing them on every 60fps redraw while
+    /// the spinner animates would burn ~9% of a core; the label reads these cached
+    /// values instead and the animation path does no parsing.
+    private(set) var menuBarCounts = StatusCounts()
+    private(set) var menuBarStatus: OverallStatus = .unknown
 
-    /// Start or stop the spinner timer to match `wantsSpinnerAnimation`. Called by
-    /// the poller after it refreshes build state, and when the preference changes.
+    /// Recompute the cached menu-bar status and start/stop the spinner timer to
+    /// match it. Called by each poller right after it updates build/deploy state.
     func refreshDeploySpinner() {
-        if wantsSpinnerAnimation {
+        menuBarCounts = statusCounts
+        menuBarStatus = menuBarCounts.overallStatus(pendingApprovals: pendingApprovals.count)
+
+        if menuBarStatus == .running {
             guard deploySpinnerTimer == nil else { return }
-            let step = (1.0 / deploySpinnerFPS) / deploySpinnerPeriod
+            // Derive the phase from elapsed monotonic time rather than accumulating
+            // a fixed step per tick, so a late or dropped frame snaps to the right
+            // angle instead of slowing the spin - the rotation stays at a constant
+            // velocity and reads smoothly even if the timer jitters.
+            deploySpinnerStart = ProcessInfo.processInfo.systemUptime
             let timer = Timer(timeInterval: 1.0 / deploySpinnerFPS, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
-                    self.deploySpinnerPhase = (self.deploySpinnerPhase + step)
+                    let elapsed = ProcessInfo.processInfo.systemUptime - self.deploySpinnerStart
+                    self.deploySpinnerPhase = (elapsed / self.deploySpinnerPeriod)
                         .truncatingRemainder(dividingBy: 1)
                 }
             }
+            timer.tolerance = 0
             RunLoop.main.add(timer, forMode: .common)
             deploySpinnerTimer = timer
         } else {
@@ -454,7 +505,14 @@ final class AppState {
 
     // MARK: - Actions
 
+    private var hasInitialized = false
+
     func initialize() async {
+        // Runs once at launch (from the app delegate) - guard against the popover's
+        // fallback `.task` also firing it if the window opens before launch finishes.
+        guard !hasInitialized else { return }
+        hasInitialized = true
+
         workflowApprovalSupport.removeAll()
         armedAutoApprovals.removeAll()
         await NotificationManager.shared.requestAuthorization()
@@ -751,9 +809,13 @@ final class AppState {
         preferences.watchedProjects = []
         preferences.save()
         regroupCards()
+        // Recompute from the now-cleared data so the menu bar doesn't keep showing
+        // the pre-sign-out status (and stops the spinner timer). Polling has ended,
+        // so no future poll would otherwise refresh the cache.
+        refreshDeploySpinner()
         currentScreen = .onboarding
     }
-    
+
     func changeToken() {
         // Preserve watchlist but clear token and go to onboarding
         stopPolling()
@@ -769,6 +831,7 @@ final class AppState {
         armedAutoApprovals = [:]
         // Note: watchedProjects is preserved
         regroupCards()
+        refreshDeploySpinner()
         currentScreen = .onboarding
     }
     
@@ -901,6 +964,9 @@ final class AppState {
         preferences.watchedVercelProjects = []
         preferences.selectedVercelTeamId = nil
         preferences.save()
+        // CircleCI may still be connected; recompute from remaining data so the
+        // badge drops the disconnected Vercel deploys instead of showing them stale.
+        refreshDeploySpinner()
     }
     
     // MARK: - Private
@@ -1023,10 +1089,21 @@ enum OverallStatus {
     var menuBarIcon: String {
         switch self {
         case .passing: return "checkmark.circle.fill"
-        case .failing: return "exclamationmark.circle.fill"
-        case .running: return "arrow.triangle.2.circlepath.circle.fill"
+        case .failing: return "xmark.circle.fill"
+        case .running: return "arrow.triangle.2.circlepath.circle.fill" // unused: the label draws an animated spinner
         case .pendingApproval: return "pause.circle.fill"
         case .unknown: return "circle.dashed"
+        }
+    }
+
+    /// Hybrid menu-bar tint: color only for attention states, nil for calm
+    /// states so they render monochrome/template and adapt to the menu bar.
+    /// Colors match the glyphs used by build rows (RowStatus).
+    var menuBarTint: Color? {
+        switch self {
+        case .failing: return AppChrome.danger
+        case .pendingApproval: return AppChrome.warning
+        case .passing, .running, .unknown: return nil
         }
     }
 }
