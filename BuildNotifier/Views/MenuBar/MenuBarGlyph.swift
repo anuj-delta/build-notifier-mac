@@ -52,9 +52,23 @@ enum MenuBarGlyph {
         return image
     }
 
-    /// One frame of the deploy spinner, rotated by `phase` (0...1).
+    static let spinnerFrames = 12
+    static let spinnerPeriod = 0.9
+
+    @MainActor private static var frameCache: [MenuBarDeployStyle: [NSImage]] = [:]
+
+    /// The deploy spinner frame nearest `phase` (0...1). Frames are drawn once per style.
+    @MainActor
     static func deploying(style: MenuBarDeployStyle, phase: Double) -> NSImage {
-        let degrees = phase * 360
+        let frames = frameCache[style] ?? (0..<spinnerFrames).map { i in
+            render(style: style, degrees: Double(i) * 360 / Double(spinnerFrames))
+        }
+        frameCache[style] = frames
+        let index = Int((phase * Double(spinnerFrames)).rounded())
+        return frames[(index % spinnerFrames + spinnerFrames) % spinnerFrames]
+    }
+
+    private static func render(style: MenuBarDeployStyle, degrees: Double) -> NSImage {
         switch style {
         case .dashes: return rotatedSymbol("slowmo", degrees: degrees)
         case .arc: return rotated(degrees: degrees, draw: drawArc)

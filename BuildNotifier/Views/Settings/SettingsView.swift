@@ -1211,10 +1211,10 @@ private struct SettingsToggleRow<Trailing: View>: View {
 /// ignores it), reusing the exact `NSImage` rendering the menu bar uses.
 private struct DeployLoaderPreview: View {
     let style: MenuBarDeployStyle
-    private let period: Double = 0.9
+    private let period = MenuBarGlyph.spinnerPeriod
 
     var body: some View {
-        TimelineView(.animation) { context in
+        TimelineView(.animation(minimumInterval: period / Double(MenuBarGlyph.spinnerFrames))) { context in
             let phase = context.date.timeIntervalSinceReferenceDate
                 .truncatingRemainder(dividingBy: period) / period
             MenuBarDeployingGlyph(style: style, phase: phase)

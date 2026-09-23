@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// How tall the menu is, and the most it may be on the screen it is opening on. The window
-/// knows which screen it is on, the content does not, so the window sets these and the
+/// How tall the menu is, the most it may be on the screen it is opening on, and whether it is
+/// open. The window knows these, the content does not, so the window sets them and the
 /// content reads them. The height survives a relaunch, like any window frame.
 @Observable
 @MainActor
@@ -13,6 +13,8 @@ final class MenuMetrics {
 
     private(set) var ceiling: CGFloat = MenuMetrics.defaultHeight
     private(set) var height: CGFloat
+    /// The panel is only ordered out on close, so its content keeps rendering unless it checks this.
+    var isOpen = false
 
     /// Resizes the window. Set by the window, called on every drag step so the panel and the
     /// content it holds change size in the same turn - going through observation instead put
@@ -38,6 +40,10 @@ final class MenuMetrics {
     func save() {
         UserDefaults.standard.set(height, forKey: Self.key)
     }
+}
+
+extension EnvironmentValues {
+    @Entry var isMenuOpen = true
 }
 
 /// The menu bar icon and the panel it opens.
@@ -91,7 +97,10 @@ final class MenuBarItem: NSObject {
     private func renderGlyph() {
         withObservationTracking {
             item.button?.image = MenuBarGlyph.image(for: appState)
-            item.button?.setAccessibilityLabel(MenuBarGlyph.accessibilityLabel(for: appState))
+            let label = MenuBarGlyph.accessibilityLabel(for: appState)
+            if item.button?.accessibilityLabel() != label {
+                item.button?.setAccessibilityLabel(label)
+            }
         } onChange: { [weak self] in
             Task { @MainActor in self?.renderGlyph() }
         }
@@ -99,6 +108,7 @@ final class MenuBarItem: NSObject {
 
     func close() {
         panel.orderOut(nil)
+        metrics.isOpen = false
         item.button?.isHighlighted = false
         stopWatchingOutsideClicks()
     }
@@ -124,6 +134,7 @@ final class MenuBarItem: NSObject {
         // A non-activating panel takes key input without pulling the app out of
         // .accessory, so opening the menu never steals focus from another app.
         panel.makeKeyAndOrderFront(nil)
+        metrics.isOpen = true
 
         watchOutsideClicks()
         appState.refreshNow()
