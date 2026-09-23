@@ -176,6 +176,7 @@ struct MenuBarContentView: View {
             }
         }
         .frame(width: popoverWidth, height: metrics.height)
+        .environment(\.isMenuOpen, metrics.isOpen)
         .background {
             Button(action: openSearch) { EmptyView() }
                 .keyboardShortcut("s", modifiers: [])

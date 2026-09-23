@@ -19,7 +19,7 @@ final class AppState {
     // MARK: - User Data (CircleCI)
     var currentUser: User?
     var projects: [Project] = []
-    var buildsByProject: [String: [Build]] = [:]
+    var buildsByProject: [String: [Build]] = [:] { didSet { updateBuildActivity() } }
     var pendingApprovals: [PendingApproval] = []
     var workflowApprovalSupport: [String: Bool] = [:]
     var armedAutoApprovals: [String: ArmedAutoApproval] = [:]
@@ -43,7 +43,7 @@ final class AppState {
     var vercelUser: VercelUserInfo?
     var vercelTeams: [VercelTeam] = []
     var vercelProjects: [VercelProject] = []
-    var deploymentsByProject: [String: [VercelDeployment]] = [:]
+    var deploymentsByProject: [String: [VercelDeployment]] = [:] { didSet { updateBuildActivity() } }
     var notifiedVercelDeployments: Set<String> = []
 
     // MARK: - Preferences
@@ -150,20 +150,14 @@ final class AppState {
         return .unknown
     }
 
-    var hasActiveBuildActivity: Bool {
-        for (_, builds) in buildsByProject {
-            if builds.contains(where: { $0.buildStatus.isRunning }) {
-                return true
-            }
-        }
+    /// Stored so the menu bar spinner, which reads it on every frame, does not re-derive the
+    /// status of every build each time.
+    private(set) var hasActiveBuildActivity = false
 
-        for (_, deployments) in deploymentsByProject {
-            if deployments.contains(where: { $0.deploymentStatus.isRunning }) {
-                return true
-            }
-        }
-
-        return false
+    private func updateBuildActivity() {
+        let active = buildsByProject.values.contains { $0.contains { $0.buildStatus.isRunning } }
+            || deploymentsByProject.values.contains { $0.contains { $0.deploymentStatus.isRunning } }
+        if active != hasActiveBuildActivity { hasActiveBuildActivity = active }
     }
 
     /// A deploy to any tracked environment is in flight (its workflow is still
@@ -179,8 +173,6 @@ final class AppState {
     /// reads it, which is the same path that swaps the idle/spinner/approval icon.
     var deploySpinnerPhase: Double = 0
     private var deploySpinnerTimer: Timer?
-    private let deploySpinnerFPS: Double = 20
-    private let deploySpinnerPeriod: Double = 0.9
 
     /// Whether the animated loader should be spinning: any build/deploy is active
     /// and the user hasn't turned the loader off.
@@ -193,14 +185,16 @@ final class AppState {
     func refreshDeploySpinner() {
         if wantsSpinnerAnimation {
             guard deploySpinnerTimer == nil else { return }
-            let step = (1.0 / deploySpinnerFPS) / deploySpinnerPeriod
-            let timer = Timer(timeInterval: 1.0 / deploySpinnerFPS, repeats: true) { [weak self] _ in
+            let step = 1.0 / Double(MenuBarGlyph.spinnerFrames)
+            let interval = MenuBarGlyph.spinnerPeriod * step
+            let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.deploySpinnerPhase = (self.deploySpinnerPhase + step)
                         .truncatingRemainder(dividingBy: 1)
                 }
             }
+            timer.tolerance = interval / 4
             RunLoop.main.add(timer, forMode: .common)
             deploySpinnerTimer = timer
         } else {

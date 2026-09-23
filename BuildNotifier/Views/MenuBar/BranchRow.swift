@@ -26,6 +26,7 @@ struct BranchRow: View {
     let onOpenPR: () -> Void
 
     @State private var isHovered = false
+    @Environment(\.isMenuOpen) private var isMenuOpen
 
     private var build: Build? { activity.build }
 
@@ -210,7 +211,7 @@ struct BranchRow: View {
                 HStack(spacing: 3) {
                     Image(systemName: badge.env.badgeIcon)
                         .font(.system(size: 8, weight: .semibold))
-                        .symbolEffect(.pulse, options: .repeating, isActive: badge.isDeploying)
+                        .symbolEffect(.pulse, options: .repeating, isActive: badge.isDeploying && isMenuOpen)
                     Text(badge.env.label)
                         .font(.system(size: 11, weight: .semibold))
                 }
@@ -344,6 +345,7 @@ private struct VercelChip: View {
     let item: BranchDeployment
 
     @State private var isHovered = false
+    @Environment(\.isMenuOpen) private var isMenuOpen
 
     private var status: RowStatus {
         RowStatus(item.deployment.deploymentStatus)
@@ -365,7 +367,7 @@ private struct VercelChip: View {
             Image(systemName: "triangle.fill")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(tint)
-                .symbolEffect(.pulse, options: .repeating, isActive: status.isInProgress)
+                .symbolEffect(.pulse, options: .repeating, isActive: status.isInProgress && isMenuOpen)
                 .frame(width: 16, height: 16)
                 .background(
                     RoundedRectangle(cornerRadius: 5, style: .continuous)

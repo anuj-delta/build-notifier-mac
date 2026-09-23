@@ -8,6 +8,7 @@ struct Shimmer: ViewModifier {
     var active: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isMenuOpen) private var isMenuOpen
 
     private let period: TimeInterval = 1.8
     /// Share of the period spent sweeping; the remainder is a rest between sweeps.
@@ -28,7 +29,7 @@ struct Shimmer: ViewModifier {
                         // Driven by the clock, not a repeatForever animation started in
                         // onAppear: the menu panel is built once, so onAppear never fires
                         // again for a build that starts while the menu is closed.
-                        TimelineView(.animation) { timeline in
+                        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !isMenuOpen)) { timeline in
                             let elapsed = timeline.date.timeIntervalSinceReferenceDate
                             ZStack {
                                 AppChrome.textMuted
