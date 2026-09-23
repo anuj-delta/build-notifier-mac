@@ -476,7 +476,7 @@ struct MenuBarContentView: View {
         return MenuBarSnapshot(
             hasSearchQuery: hasSearchQuery,
             filteredPendingApprovals: gates,
-            deployHolds: holds,
+            deployHolds: DeployHold.newest(holds),
             filteredCards: cards
         )
     }

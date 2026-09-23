@@ -138,6 +138,15 @@ final class DevnetDeployTests: XCTestCase {
         XCTAssertFalse(hold.isSuperseded(by: builds))
     }
 
+    func testNewestKeepsOneHoldPerBranchAndEnvironment() {
+        let holds = [
+            DeployHold(approval: makeHold(on: makeBuild(buildNum: 1307, branch: "develop", workflowName: "build-and-deploy")), env: .devnet, isSuperseded: true),
+            DeployHold(approval: makeHold(on: makeBuild(buildNum: 1312, branch: "develop", workflowName: "build-and-deploy")), env: .devnet, isSuperseded: false),
+            DeployHold(approval: makeHold(on: makeBuild(buildNum: 1300, branch: "feat/x", workflowName: "devnet-manual-deploy")), env: .devnet, isSuperseded: false)
+        ]
+        XCTAssertEqual(DeployHold.newest(holds).map(\.approval.build.buildNum), [1312, 1300])
+    }
+
     // MARK: - markBranchDeployed baseline
 
     func testRedeployBaselinesExistingSuccessfulWorkflows() {

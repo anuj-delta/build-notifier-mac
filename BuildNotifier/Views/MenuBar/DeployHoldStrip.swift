@@ -8,6 +8,19 @@ struct DeployHold: Identifiable {
     let isSuperseded: Bool
 
     var id: String { approval.id }
+
+    /// Keeps the newest build's hold for each repository, branch, and environment.
+    static func newest(_ holds: [DeployHold]) -> [DeployHold] {
+        func key(_ hold: DeployHold) -> String {
+            "\(hold.approval.build.projectSlug)#\(hold.approval.build.branch ?? "")#\(hold.env.rawValue)"
+        }
+        var newest: [String: DeployHold] = [:]
+        for hold in holds {
+            if let kept = newest[key(hold)], kept.approval.build.buildNum >= hold.approval.build.buildNum { continue }
+            newest[key(hold)] = hold
+        }
+        return holds.filter { newest[key($0)]?.id == $0.id }
+    }
 }
 
 struct DeployHoldStrip: View {
@@ -43,11 +56,18 @@ private struct DeployHoldRow: View {
 
     private var build: Build { hold.approval.build }
 
-    private var summary: Text {
+    private var summary: some View {
         let number = build.pullRequestNumber.map { " #\($0)" } ?? ""
-        return Text("\(build.projectRepositoryName) ").foregroundStyle(AppChrome.textMuted)
-            + Text(build.branch ?? "unknown").foregroundStyle(AppChrome.text).fontWeight(.semibold)
-            + Text("\(number) held for \(hold.env.label)").foregroundStyle(AppChrome.textSecondary)
+        return HStack(spacing: 0) {
+            Text("\(build.projectRepositoryName) ")
+                .foregroundStyle(AppChrome.textMuted)
+                .lineLimit(1)
+            (Text(build.branch ?? "unknown").foregroundStyle(AppChrome.text).fontWeight(.semibold)
+                + Text("\(number) held for \(hold.env.label)").foregroundStyle(AppChrome.textSecondary))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(1)
+        }
     }
 
     var body: some View {
@@ -60,8 +80,6 @@ private struct DeployHoldRow: View {
             Button(action: onOpen) {
                 summary
                     .font(.system(size: 12))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
             }
