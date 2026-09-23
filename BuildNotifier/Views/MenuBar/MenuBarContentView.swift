@@ -28,11 +28,13 @@ private struct SeparatedSections<Item: Identifiable, Content: View>: View {
 private struct MenuBarSnapshot {
     let hasSearchQuery: Bool
     let filteredPendingApprovals: [PendingApproval]
+    let deployHolds: [DeployHold]
     let filteredCards: [RepoCard]
 }
 
 private enum PendingMenuAction {
     case approve(PendingApproval)
+    case reject(PendingApproval)
     case retry(Build)
     case cancel(Build)
 
@@ -40,6 +42,8 @@ private enum PendingMenuAction {
         switch self {
         case .approve(let approval):
             return "Approve \(approval.jobName)?"
+        case .reject(let approval):
+            return "Reject \(approval.jobName)?"
         case .retry(let build):
             return "Retry Build #\(build.buildNum)?"
         case .cancel(let build):
@@ -51,6 +55,8 @@ private enum PendingMenuAction {
         switch self {
         case .approve(let approval):
             return "This will approve the workflow for \(approval.build.branch ?? "this branch")."
+        case .reject(let approval):
+            return "This cancels the workflow for \(approval.build.branch ?? "this branch"). Its remaining jobs will not run."
         case .retry(let build):
             return "This will create a new build for \(build.branch ?? "this branch")."
         case .cancel:
@@ -62,6 +68,8 @@ private enum PendingMenuAction {
         switch self {
         case .approve:
             return "Approve"
+        case .reject:
+            return "Reject"
         case .retry:
             return "Retry"
         case .cancel:
@@ -71,7 +79,7 @@ private enum PendingMenuAction {
 
     var confirmRole: ButtonRole? {
         switch self {
-        case .cancel:
+        case .cancel, .reject:
             return .destructive
         case .approve, .retry:
             return nil
@@ -82,6 +90,8 @@ private enum PendingMenuAction {
         switch self {
         case .approve:
             return "checkmark.seal.fill"
+        case .reject:
+            return "hand.raised.fill"
         case .retry:
             return "arrow.clockwise"
         case .cancel:
@@ -97,6 +107,8 @@ private enum PendingMenuAction {
         switch self {
         case .approve:
             return "Not Now"
+        case .reject:
+            return "Keep Waiting"
         case .retry:
             return "Keep Current Build"
         case .cancel:
@@ -419,10 +431,10 @@ struct MenuBarContentView: View {
         let hasSearchQuery = !normalizedSearchText.isEmpty
 
         guard hasSearchQuery else {
-            return MenuBarSnapshot(
+            return makeSnapshot(
                 hasSearchQuery: false,
-                filteredPendingApprovals: appState.pendingApprovals,
-                filteredCards: appState.repoCards
+                approvals: appState.pendingApprovals,
+                cards: appState.repoCards
             )
         }
 
@@ -440,12 +452,32 @@ struct MenuBarContentView: View {
             )
         }
 
-        return MenuBarSnapshot(
+        return makeSnapshot(
             hasSearchQuery: true,
-            filteredPendingApprovals: appState.pendingApprovals.filter { approval in
+            approvals: appState.pendingApprovals.filter { approval in
                 branchMatchesSearch(approval.build.branch, searchText: normalizedSearchText)
             },
-            filteredCards: filteredCards
+            cards: filteredCards
+        )
+    }
+
+    private func makeSnapshot(hasSearchQuery: Bool, approvals: [PendingApproval], cards: [RepoCard]) -> MenuBarSnapshot {
+        var gates: [PendingApproval] = []
+        var holds: [DeployHold] = []
+        for approval in approvals {
+            let build = approval.build
+            if let env = DeployEnvironment.target(of: build, productionBranches: appState.preferences.productionBranches) {
+                let builds = appState.buildsByProject[build.projectSlug] ?? []
+                holds.append(DeployHold(approval: approval, env: env, isSuperseded: approval.isSuperseded(by: builds)))
+            } else {
+                gates.append(approval)
+            }
+        }
+        return MenuBarSnapshot(
+            hasSearchQuery: hasSearchQuery,
+            filteredPendingApprovals: gates,
+            deployHolds: DeployHold.newest(holds),
+            filteredCards: cards
         )
     }
 
@@ -456,6 +488,9 @@ struct MenuBarContentView: View {
             armedAutoApprovalWorkflowIds: appState.armedAutoApprovalWorkflowIds,
             onApprove: { approval in
                 pendingAction = .approve(approval)
+            },
+            onReject: { approval in
+                pendingAction = .reject(approval)
             },
             onArmAutoApprove: { approval in
                 appState.armAutoApprove(for: approval.build)
@@ -511,6 +546,15 @@ struct MenuBarContentView: View {
 
     @ViewBuilder
     private func cards(snapshot: MenuBarSnapshot) -> some View {
+        if !snapshot.deployHolds.isEmpty {
+            DeployHoldStrip(
+                holds: snapshot.deployHolds,
+                onDeploy: { pendingAction = .approve($0) },
+                onReject: { pendingAction = .reject($0) },
+                onOpen: { openBuildUrl($0.build.workflowUrl ?? $0.build.buildUrl) }
+            )
+        }
+
         if !snapshot.filteredPendingApprovals.isEmpty {
             pendingApprovals(snapshot.filteredPendingApprovals)
         }
@@ -526,7 +570,7 @@ struct MenuBarContentView: View {
                 actionTitle: "Clear filter",
                 action: { searchText = "" }
             )
-        } else if snapshot.filteredPendingApprovals.isEmpty {
+        } else if snapshot.filteredPendingApprovals.isEmpty && snapshot.deployHolds.isEmpty {
             ProviderEmptyStateCard(
                 title: isAwaitingFirstPoll ? "Loading builds" : "Waiting for the first build",
                 message: isAwaitingFirstPoll
@@ -598,6 +642,8 @@ struct MenuBarContentView: View {
         switch action {
         case .approve(let approval):
             Task { await appState.approveJob(approval) }
+        case .reject(let approval):
+            Task { await appState.rejectApproval(approval) }
         case .retry(let build):
             Task { await appState.retryBuild(build) }
         case .cancel(let build):
@@ -773,6 +819,7 @@ struct PendingApprovalsSection: View {
     let approvals: [PendingApproval]
     let armedAutoApprovalWorkflowIds: Set<String>
     let onApprove: (PendingApproval) -> Void
+    let onReject: (PendingApproval) -> Void
     let onArmAutoApprove: (PendingApproval) -> Void
     let onCancelAutoApprove: (PendingApproval) -> Void
     let onOpen: (PendingApproval) -> Void
@@ -804,6 +851,7 @@ struct PendingApprovalsSection: View {
                     approval: approval,
                     isAutoApproveArmed: armedAutoApprovalWorkflowIds.contains(approval.workflowId),
                     onApprove: { onApprove(approval) },
+                    onReject: { onReject(approval) },
                     onAutoApprove: { onArmAutoApprove(approval) },
                     onCancelAutoApprove: { onCancelAutoApprove(approval) },
                     onOpen: { onOpen(approval) }
@@ -831,6 +879,7 @@ struct ApprovalRow: View {
     let approval: PendingApproval
     let isAutoApproveArmed: Bool
     let onApprove: () -> Void
+    let onReject: () -> Void
     let onAutoApprove: () -> Void
     let onCancelAutoApprove: () -> Void
     let onOpen: () -> Void
@@ -872,6 +921,12 @@ struct ApprovalRow: View {
                     .truncationMode(.tail)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button("Reject") {
+                onReject()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
 
             Button("Approve") {
                 onApprove()

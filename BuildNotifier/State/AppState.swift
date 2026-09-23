@@ -161,7 +161,7 @@ final class AppState {
     }
 
     /// A deploy to any tracked environment is in flight (its workflow is still
-    /// running/on-hold). Drives the dedicated deploying glyph in the menu bar.
+    /// running; a held one waits on a person and does not count). Drives the deploying glyph.
     var isDeploying: Bool {
         deployingBranchBySlugByEnv.values.contains { !$0.isEmpty }
     }
@@ -400,7 +400,7 @@ final class AppState {
     var deployedBranchBySlugByEnv: [DeployEnvironment: [String: String]] = [:]
 
     /// The branch with an in-flight deploy to each environment per project (its deploy
-    /// workflow is still running/on-hold, not yet terminal). Keyed by environment, then
+    /// workflow is still running, not held or terminal). Keyed by environment, then
     /// project slug. Replaced every poll so a finished or failed deploy clears immediately -
     /// on failure the row falls back to whatever `deployedBranchBySlugByEnv` still holds.
     var deployingBranchBySlugByEnv: [DeployEnvironment: [String: String]] = [:]
@@ -694,6 +694,17 @@ final class AppState {
                 workflowId: approval.workflowId,
                 approvalRequestId: approval.jobId
             )
+        } catch {
+            reportError(error)
+        }
+        poller.poll()
+    }
+
+    func rejectApproval(_ approval: PendingApproval) async {
+        pendingApprovals.removeAll { $0.workflowId == approval.workflowId }
+        cancelAutoApprove(forWorkflowId: approval.workflowId)
+        do {
+            try await CircleCIAPI.shared.cancelWorkflow(workflowId: approval.workflowId)
         } catch {
             reportError(error)
         }

@@ -380,7 +380,7 @@ final class BuildPoller: ObservableObject {
     }
 
     /// v2 rollup statuses that mean a deploy is still in flight (not yet terminal).
-    private static let inProgressWorkflowStatuses: Set<String> = ["running", "on_hold", "failing"]
+    private static let inProgressWorkflowStatuses: Set<String> = ["running", "failing"]
 
     /// For each environment and project, the branch live there (newest deploy workflow whose
     /// v2 rollup status is `success`) and the branch mid-deploy (newest deploy workflow that
@@ -658,9 +658,9 @@ final class BuildPoller: ObservableObject {
             let suppressRecoveredBaseline = newUnresolvedBaselineWorkflows.contains(workflowId)
             let wantsSuccessNotification = notificationsEnabled && preferences.notifyOnSuccess
                 && !appState.notifiedSuccessWorkflows.contains(workflowId)
-            let deployEnv = DeployEnvironment.allCases.first { env in
-                builds.contains { env.isDeploy($0, productionBranches: preferences.productionBranches) }
-            }
+            let deployEnv = builds.lazy
+                .compactMap { DeployEnvironment.target(of: $0, productionBranches: preferences.productionBranches) }
+                .first
             let celebrationKind: CelebrationKind? =
                 (preferences.celebrateProdSuccess && isProdBranch) ? .production
                 : (preferences.celebrateDeployedBranches && isDeployedBranch) ? .deploy(deployEnv ?? .devnet)

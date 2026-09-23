@@ -19,6 +19,10 @@ enum DeployEnvironment: String, CaseIterable {
 
     var label: String { rawValue }
 
+    static func target(of build: Build, productionBranches: [String]) -> DeployEnvironment? {
+        allCases.first { $0.isDeploy(build, productionBranches: productionBranches) }
+    }
+
     /// Whether a build deploys to this environment. `build-and-deploy` also runs on
     /// production branches for prod, so those are excluded via `productionBranches`.
     func isDeploy(_ build: Build, productionBranches: [String]) -> Bool {
