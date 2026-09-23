@@ -89,6 +89,15 @@ struct PendingApproval: Identifiable, Equatable {
         self.build = build
     }
     
+    /// A newer build exists on the same branch, so approving this one would ship older code.
+    func isSuperseded(by builds: [Build]) -> Bool {
+        builds.contains {
+            $0.branch == build.branch
+                && $0.buildNum > build.buildNum
+                && $0.workflows?.workflowId != workflowId
+        }
+    }
+
     static func == (lhs: PendingApproval, rhs: PendingApproval) -> Bool {
         lhs.id == rhs.id
     }

@@ -110,6 +110,34 @@ final class DevnetDeployTests: XCTestCase {
         XCTAssertEqual(candidates.map(\.workflowId), ["wf-sigma"])
     }
 
+    // MARK: - Deploy holds
+
+    func testTargetNamesTheDeployEnvironment() {
+        XCTAssertEqual(DeployEnvironment.target(of: makeBuild(branch: "develop", workflowName: "build-and-deploy"), productionBranches: productionBranches), .devnet)
+        XCTAssertEqual(DeployEnvironment.target(of: makeBuild(branch: "feat/x", workflowName: "sigma-manual-deploy"), productionBranches: productionBranches), .sigma)
+        XCTAssertNil(DeployEnvironment.target(of: makeBuild(branch: "main", workflowName: "build-and-deploy"), productionBranches: productionBranches))
+    }
+
+    func testHoldIsSupersededByNewerBuildOnSameBranch() {
+        let hold = makeHold(on: makeBuild(buildNum: 1307, branch: "develop", workflowName: "build-and-deploy"))
+        let builds = [
+            makeBuild(buildNum: 1309, branch: "develop", workflowName: "build-and-deploy", status: "canceled"),
+            hold.build
+        ]
+        XCTAssertTrue(hold.isSuperseded(by: builds))
+    }
+
+    func testHoldIsNotSupersededByItsOwnWorkflowOrOtherBranches() {
+        let heldBuild = makeBuild(buildNum: 1307, branch: "develop", workflowName: "build-and-deploy", workflowId: "wf-held")
+        let hold = makeHold(on: heldBuild)
+        let builds = [
+            makeBuild(buildNum: 1310, branch: "develop", workflowName: "build-and-deploy", workflowId: "wf-held"),
+            makeBuild(buildNum: 1311, branch: "feat/x", workflowName: "devnet-manual-deploy"),
+            heldBuild
+        ]
+        XCTAssertFalse(hold.isSuperseded(by: builds))
+    }
+
     // MARK: - markBranchDeployed baseline
 
     func testRedeployBaselinesExistingSuccessfulWorkflows() {
@@ -138,6 +166,21 @@ final class DevnetDeployTests: XCTestCase {
     // MARK: - Helpers
 
     private let slug = "delta-exchange/support-chatbot"
+
+    private func makeHold(on build: Build) -> PendingApproval {
+        let job = WorkflowJob(
+            id: "gate-\(build.buildNum)",
+            name: "deploy-approval-devnet",
+            projectSlug: nil,
+            status: "on_hold",
+            type: "approval",
+            approvedBy: nil,
+            startedAt: nil,
+            stoppedAt: nil,
+            jobNumber: nil
+        )
+        return PendingApproval(workflowId: build.workflows?.workflowId ?? "", job: job, build: build)
+    }
 
     private func makeAppState(builds: [Build]) -> AppState {
         let appState = AppState(poller: BuildPoller(), vercelPoller: VercelPoller(), autoApprovalPoller: AutoApprovalPoller())

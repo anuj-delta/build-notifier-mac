@@ -160,6 +160,14 @@ actor CircleCIAPI {
         )
     }
     
+    /// CircleCI has no call to reject an approval job; its web UI cancels the workflow instead.
+    func cancelWorkflow(workflowId: String) async throws {
+        try await send(
+            url: "\(baseURLv2)/workflow/\(workflowId)/cancel",
+            method: "POST"
+        )
+    }
+    
     /// Trigger a new pipeline for a branch, optionally passing pipeline parameters.
     func triggerPipeline(
         vcsType: String,

@@ -815,6 +815,17 @@ final class BuildPollerTests: XCTestCase {
         XCTAssertNil(appState.deployedBranch(forSlug: Self.slug, env: .devnet))
     }
 
+    func testHeldDeployIsNeitherDeployingNorDeployed() async {
+        let builds = [
+            makeBuild(buildNum: 11, branch: "develop", committerName: "GitHub", committerEmail: "noreply@github.com", workflowId: "wf-held", startTime: "2026-03-24T10:00:00Z")
+        ]
+        let statuses = ["wf-held": "on_hold"]
+        let appState = await runPollResolvingDeploys(builds: builds, statuses: statuses)
+        XCTAssertNil(appState.deployingBranch(forSlug: Self.slug, env: .devnet))
+        XCTAssertNil(appState.deployedBranch(forSlug: Self.slug, env: .devnet))
+        XCTAssertFalse(appState.isDeploying)
+    }
+
     func testConcurrentSuccessAndRunningDeployReportBothBranches() async {
         // develop is live; a newer manual deploy of a feature branch is still running.
         let builds = [
