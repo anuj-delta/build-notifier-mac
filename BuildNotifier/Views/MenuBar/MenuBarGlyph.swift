@@ -52,7 +52,9 @@ enum MenuBarGlyph {
         return image
     }
 
-    static let spinnerFrames = 12
+    /// Timer steps per turn. The arc draws one frame per step; the 12-spoke styles advance
+    /// one spoke every other step, since a spoke drawn between slots reads as a wobble.
+    static let spinnerFrames = 24
     static let spinnerPeriod = 0.9
 
     @MainActor private static var frameCache: [MenuBarDeployStyle: [NSImage]] = [:]
@@ -60,17 +62,19 @@ enum MenuBarGlyph {
     /// The deploy spinner frame nearest `phase` (0...1). Frames are drawn once per style.
     @MainActor
     static func deploying(style: MenuBarDeployStyle, phase: Double) -> NSImage {
-        let frames = frameCache[style] ?? (0..<spinnerFrames).map { i in
-            render(style: style, degrees: Double(i) * 360 / Double(spinnerFrames))
+        let count = style == .arc ? spinnerFrames : 12
+        let frames = frameCache[style] ?? (0..<count).map { i in
+            render(style: style, degrees: Double(i) * 360 / Double(count))
         }
         frameCache[style] = frames
-        let index = Int((phase * Double(spinnerFrames)).rounded())
-        return frames[(index % spinnerFrames + spinnerFrames) % spinnerFrames]
+        let step = Int((phase * Double(spinnerFrames)).rounded())
+        let wrapped = (step % spinnerFrames + spinnerFrames) % spinnerFrames
+        return frames[wrapped * count / spinnerFrames]
     }
 
     private static func render(style: MenuBarDeployStyle, degrees: Double) -> NSImage {
         switch style {
-        case .dashes: return rotatedSymbol("slowmo", degrees: degrees)
+        case .dashes: return rotated(degrees: degrees, draw: drawDashes)
         case .arc: return rotated(degrees: degrees, draw: drawArc)
         case .dots: return rotated(degrees: degrees, draw: drawDots)
         }
@@ -85,22 +89,6 @@ enum MenuBarGlyph {
             ctx.rotate(by: -CGFloat(degrees) * .pi / 180)
             ctx.translateBy(x: -rect.midX, y: -rect.midY)
             draw(ctx, rect)
-            return true
-        }
-        image.isTemplate = true
-        return image
-    }
-
-    private static func rotatedSymbol(_ name: String, degrees: Double) -> NSImage {
-        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
-        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: "Deploying")?
-            .withSymbolConfiguration(config), base.size.width > 0 else { return NSImage() }
-        let image = NSImage(size: base.size, flipped: false) { rect in
-            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-            ctx.translateBy(x: rect.midX, y: rect.midY)
-            ctx.rotate(by: -CGFloat(degrees) * .pi / 180)
-            ctx.translateBy(x: -rect.midX, y: -rect.midY)
-            base.draw(in: rect)
             return true
         }
         image.isTemplate = true
@@ -140,6 +128,24 @@ enum MenuBarGlyph {
             ctx.fillEllipse(in: CGRect(x: x - dot / 2, y: y - dot / 2, width: dot, height: dot))
         }
     }
+
+    /// Twelve spokes with the same fading tail as `drawDots`.
+    private static func drawDashes(_ ctx: CGContext, _ rect: CGRect) {
+        let count = 12
+        let outer = min(rect.width, rect.height) / 2 - 1
+        let inner = outer * 0.55
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        ctx.setLineWidth(1.6)
+        ctx.setLineCap(.round)
+        for i in 0..<count {
+            let angle = CGFloat.pi / 2 + CGFloat(i) / CGFloat(count) * 2 * .pi
+            let alpha = 0.14 + 0.86 * Double(i) / Double(count - 1)
+            ctx.setStrokeColor(NSColor(white: 0, alpha: alpha).cgColor)
+            ctx.move(to: CGPoint(x: center.x + inner * cos(angle), y: center.y + inner * sin(angle)))
+            ctx.addLine(to: CGPoint(x: center.x + outer * cos(angle), y: center.y + outer * sin(angle)))
+            ctx.strokePath()
+        }
+    }
 }
 
 /// The look of the deploy-in-flight menu bar spinner. User-selectable in Settings.
@@ -150,7 +156,7 @@ enum MenuBarDeployStyle: String, CaseIterable, Codable {
         switch self {
         case .arc: return "Arc sweep"
         case .dots: return "Chasing dots"
-        case .dashes: return "Slowmo dashes"
+        case .dashes: return "Chasing dashes"
         }
     }
 }
