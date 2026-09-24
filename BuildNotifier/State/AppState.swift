@@ -623,16 +623,10 @@ final class AppState {
     }
     
     func cancelBuild(_ build: Build) async {
-        guard let username = build.username, let reponame = build.reponame else { return }
-        
+        guard let workflowId = build.workflows?.workflowId else { return }
+
         do {
-            _ = try await CircleCIAPI.shared.cancelBuild(
-                vcsType: build.vcsType,
-                orgName: username,
-                repoName: reponame,
-                buildNum: build.buildNum
-            )
-            // Refresh after cancel
+            try await CircleCIAPI.shared.cancelWorkflow(workflowId: workflowId)
             poller.poll()
         } catch {
             reportError(error)

@@ -60,7 +60,7 @@ private enum PendingMenuAction {
         case .retry(let build):
             return "This will create a new build for \(build.branch ?? "this branch")."
         case .cancel:
-            return "This will stop the currently running build."
+            return "This cancels the whole workflow, including its other running jobs."
         }
     }
 
