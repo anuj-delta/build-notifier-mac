@@ -104,19 +104,6 @@ actor CircleCIAPI {
         )
     }
     
-    /// Cancel a running build
-    func cancelBuild(
-        vcsType: String,
-        orgName: String,
-        repoName: String,
-        buildNum: Int
-    ) async throws -> Build {
-        return try await request(
-            url: "\(baseURLv1)/project/\(vcsType)/\(orgName)/\(repoName)/\(buildNum)/cancel",
-            method: "POST"
-        )
-    }
-    
     /// Get all recent builds across followed projects
     func getRecentBuilds(limit: Int = 30) async throws -> [Build] {
         return try await request(
