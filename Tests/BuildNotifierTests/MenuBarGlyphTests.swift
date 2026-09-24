@@ -13,6 +13,16 @@ final class MenuBarGlyphTests: XCTestCase {
         }
     }
 
+    func testSpokeStylesAdvanceOneSpokePerTwoSteps() {
+        let step = 1.0 / Double(MenuBarGlyph.spinnerFrames)
+        for style in [MenuBarDeployStyle.dots, .dashes] {
+            let first = MenuBarGlyph.deploying(style: style, phase: 0)
+            XCTAssertTrue(first === MenuBarGlyph.deploying(style: style, phase: step))
+            XCTAssertFalse(first === MenuBarGlyph.deploying(style: style, phase: step * 2))
+        }
+        XCTAssertFalse(MenuBarGlyph.deploying(style: .arc, phase: 0) === MenuBarGlyph.deploying(style: .arc, phase: step))
+    }
+
     func testBuildActivityFollowsBuildsAndReset() {
         let appState = AppState()
         XCTAssertFalse(appState.hasActiveBuildActivity)
