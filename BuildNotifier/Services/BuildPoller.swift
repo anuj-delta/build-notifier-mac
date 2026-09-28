@@ -598,12 +598,13 @@ final class BuildPoller: ObservableObject {
             }
         }
 
-        // Track notified / celebrated workflows
-        var newSuccessWorkflows = appState.notifiedSuccessWorkflows
-        var newFailedWorkflows = appState.notifiedFailedWorkflows
-        var newStartedWorkflows = appState.notifiedStartedWorkflows
-        var newCelebratedSuccess = appState.celebratedSuccessWorkflows
-        var newPlayedFailureSound = appState.playedFailureSoundWorkflows
+        // Only this poll's additions: the awaits below let a redeploy or another poll add to
+        // the same sets, and writing back a copy taken here would drop their entries.
+        var newSuccessWorkflows = Set<String>()
+        var newFailedWorkflows = Set<String>()
+        var newStartedWorkflows = Set<String>()
+        var newCelebratedSuccess = Set<String>()
+        var newPlayedFailureSound = Set<String>()
         var newUnresolvedBaselineWorkflows = unresolvedBaselineWorkflowIds
 
         for (workflowId, builds) in buildsByWorkflow {
@@ -723,12 +724,11 @@ final class BuildPoller: ObservableObject {
             }
         }
 
-        // Update tracked workflows
-        appState.notifiedSuccessWorkflows = newSuccessWorkflows
-        appState.notifiedFailedWorkflows = newFailedWorkflows
-        appState.notifiedStartedWorkflows = newStartedWorkflows
-        appState.celebratedSuccessWorkflows = newCelebratedSuccess
-        appState.playedFailureSoundWorkflows = newPlayedFailureSound
+        appState.notifiedSuccessWorkflows.formUnion(newSuccessWorkflows)
+        appState.notifiedFailedWorkflows.formUnion(newFailedWorkflows)
+        appState.notifiedStartedWorkflows.formUnion(newStartedWorkflows)
+        appState.celebratedSuccessWorkflows.formUnion(newCelebratedSuccess)
+        appState.playedFailureSoundWorkflows.formUnion(newPlayedFailureSound)
         unresolvedBaselineWorkflowIds = newUnresolvedBaselineWorkflows
 
         // Check for new pending approvals
