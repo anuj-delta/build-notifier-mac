@@ -181,6 +181,52 @@ final class BuildPollerTests: XCTestCase {
         XCTAssertEqual(successNotifications.map(\.buildNum), [540])
     }
 
+    func testRedeployDuringPollKeepsBranchWorkflowsCelebrated() async {
+        var jobsAreRunning = true
+        var holdNextJobsFetch = false
+        var gate: CheckedContinuation<Void, Never>?
+        var status = "running"
+        weak var watched: AppState?
+        let poller = BuildPoller(
+            fetchBuilds: { [unowned self] _, _, _, _ in
+                [self.makeBuild(
+                    buildNum: 540,
+                    branch: "feat/x",
+                    committerName: "Test Author",
+                    committerEmail: "author@example.test",
+                    workflowId: "wf-old",
+                    workflowName: "devnet-manual-deploy",
+                    status: status
+                )]
+            },
+            fetchWorkflowJobs: { _ in
+                // Hold the success check, which runs after the poll has stored its builds.
+                if holdNextJobsFetch, watched?.buildsByProject[Self.slug]?.first?.buildStatus.isSuccess == true {
+                    holdNextJobsFetch = false
+                    await withCheckedContinuation { gate = $0 }
+                }
+                return jobsAreRunning ? [Self.runningJob] : [Self.successJob]
+            },
+            sendBuildStartedNotification: { _, _ in },
+            sendBuildSuccessNotification: { _, _ in },
+            now: { Self.justAfterFixtures }
+        )
+        let appState = makeAppState(poller: poller, followMode: .all)
+        watched = appState
+        await poller.checkNow()
+
+        status = "success"
+        jobsAreRunning = false
+        holdNextJobsFetch = true
+        let poll = Task { await poller.checkNow() }
+        while gate == nil { await Task.yield() }
+        appState.markBranchDeployed(projectSlug: Self.slug, branch: "feat/x")
+        gate?.resume()
+        await poll.value
+
+        XCTAssertTrue(appState.celebratedSuccessWorkflows.contains("wf-old"))
+    }
+
     func testStaleSuccessIsNotAnnouncedButIsStillMarkedNotified() async {
         var jobsAreRunning = true
         var currentBuilds = [
